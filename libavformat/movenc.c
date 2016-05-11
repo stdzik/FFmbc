@@ -972,7 +972,13 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     char compressor_name[32];
 
     avio_wb32(pb, 0); /* size */
-    avio_wl32(pb, track->tag); // store it byteswapped
+	union {
+		char b[4];
+		int i;
+	} tag;
+	tag.b[0] = 'x'; tag.b[1] = 'd'; tag.b[2] = '5'; tag.b[3] = '9';
+	avio_wl32(pb, tag.i);
+    //avio_wl32(pb, track->tag); // store it byteswapped
     avio_wb32(pb, 0); /* Reserved */
     avio_wb16(pb, 0); /* Reserved */
     avio_wb16(pb, 1); /* Data-reference index */
