@@ -1301,26 +1301,36 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 
 #ifdef MDEBUG
 // Sets alis tag
-static int32_t getReferenceSize();
 static void avio_zero(AVIOContext*pb, int count);
 static char* getFilename();
 static const char* replacechar(char* string, char src, char dest);
 
+// set record size in 2 byte field.
+static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
+{
+    int64_t curpos = avio_tell(pb);
+    avio_seek(pb, pos, SEEK_SET);
+    avio_wb16(pb, (short int)(curpos - pos + offset)); /* rewrite size */
+    avio_seek(pb, curpos, SEEK_SET);
+
+    return curpos - pos;
+}
+
 static int mov_write_alis_tag(AVIOContext *pb)
 {
-    int32_t refSize = getReferenceSize();
-    // set reference
-    avio_wb32(pb, refSize); /* size */
+    int64_t pos = avio_tell(pb);
+    avio_wb32(pb, 0);      /* size */
     avio_wtag(pb, "alis");
-    avio_wb32(pb, 1); /* version & flags */
+    avio_wb32(pb, 0); /* version & flags */
 
     	// Defined fields (150 bytes)
     // set reference info
-    avio_zero(pb, 4); // user name/ app
-    avio_wb16(pb, refSize - 12); // size
+    avio_wb32(pb, 0); // user name/ app
+    int64_t pos2 = avio_tell(pb);
+    avio_wb16(pb, 0); // size
     avio_wb16(pb, 2); //vers
-    avio_wb16(pb, 0); // kind
-    avio_wb32(pb, 1); // volume name length
+    avio_wb16(pb, 0);
+    avio_w8(pb, 1); // volume name length
     avio_w8(pb, '*'); // volume
     avio_zero(pb, 26);
     avio_zero(pb, 4); // local date
@@ -1361,7 +1371,8 @@ static int mov_write_alis_tag(AVIOContext *pb)
     avio_wb32(pb, 0x7600ffff);
     avio_zero(pb, 24);
     avio_wb16(pb, 0x6bc8);
-    return 0;
+    updateSize16(pb, pos2, 2);  // write alis size
+    return updateSize(pb, pos);
 }
 /**
  * The version to handle real content file references. Assumes that content file is in the same
@@ -1391,29 +1402,6 @@ static char* getFilename()
 {
 	av_log(NULL, AV_LOG_DEBUG, "Reference: %s\n", globalFormat->cur_st->inputFilename);
 	return (endSlash != -1) ? globalFormat->cur_st->inputFilename + endSlash + 1 : globalFormat->cur_st->inputFilename;
-}
-
-static int32_t getReferenceSize()
-{
-    char* inputPath = globalFormat->cur_st->inputFilename;
-    char* strEnd = inputPath+ strlen(inputPath);
-
-    while(--strEnd > inputPath) {
-    	if(*strEnd == '/') {
-    		if(!endSlash)
-    			endSlash = strEnd - inputPath;
-    		else {
-    			startSlash = strEnd - inputPath;
-    			break;
-    		}
-    	}
-    }
-
-    if(endSlash != -1)
-    	av_strlcpy(parentDir, inputPath + startSlash, endSlash - startSlash);
-
-    int32_t refSize = 200 + 2*strlen(inputPath) + strlen(parentDir);
-    return refSize;
 }
 
 static void avio_zero(AVIOContext*pb, int count)
@@ -1607,8 +1595,8 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     avio_write(pb, hdlr, 4); /* handler */
     avio_wtag(pb, hdlr_type); /* handler type */
 #ifdef MDEBUG
-    char * qual = "appl";
-    avio_write(pb, qual,strlen(qual));
+    char qual[] = "appl";
+    avio_write(pb, qual, strlen(qual));
     avio_zero(pb, 5);
     avio_wb32(pb, 0x1002319);
     avio_write(pb, descr, strlen(descr)); /* handler description */
