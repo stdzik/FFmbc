@@ -1371,13 +1371,10 @@ static int mov_write_dref_tag(AVIOContext *pb)
 {
     av_log(globalFormat, AV_LOG_DEBUG, "mov_write_dref_tag enter\n");
     av_log(globalFormat, AV_LOG_DEBUG, "dref tag input file: %s\n", globalFormat->cur_st->inputFilename);
-
-    int32_t refSize = getReferenceSize();
-    int32_t drefSize = refSize + 16;
-    av_log(globalFormat, AV_LOG_DEBUG, "file name: %s %lu\n", getFilename(), strlen(getFilename()));
+    int64_t pos = avio_tell(pb);
 
     // set dref atom
-    avio_wb32(pb, drefSize); /* size */
+    avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "dref");
     avio_wb32(pb, 0); /* version & flags */
     avio_wb32(pb, 1); /* entry count */
@@ -1386,7 +1383,7 @@ static int mov_write_dref_tag(AVIOContext *pb)
 
     av_log(globalFormat, AV_LOG_INFO, "mov_write_dref_tag exit\n");
 
-    return drefSize;
+    return updateSize(pb, pos);
 }
 
 
