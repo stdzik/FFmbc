@@ -84,6 +84,8 @@
 
 #include "libavutil/avassert.h"
 
+#define MDEBUG
+
 const char program_name[] = "FFmbc";
 const int program_birth_year = 2008;
 
@@ -1976,7 +1978,7 @@ static int output_packet(InputStream *ist, int ist_index,
                         }
 
                         if (verbose > 3) {
-                            av_log(NULL, AV_LOG_INFO, "Stream #%d.%d copy pts %"PRId64" dts %"PRId64" duration %d size %d flags %x start time %"PRId64"\n",
+                            av_log(NULL, AV_LOG_INFO, "Stream #%d.%d f pts %"PRId64" dts %"PRId64" duration %d size %d flags %x start time %"PRId64"\n",
                                     ost->file_index, ost->index, pkt->pts, pkt->dts, pkt->duration, pkt->size, pkt->flags, ost_tb_start_time);
                             av_log(NULL, AV_LOG_INFO, "Stream #%d.%d copy ist pts %"PRId64" next pts %"PRId64"\n",
                                     ost->file_index, ost->index, ist->pts, ist->next_pts);
@@ -2558,7 +2560,7 @@ static int transcode(AVFormatContext **output_files,
                      StreamMap *stream_maps, int nb_stream_maps)
 {
     int ret = 0, i, j, k, n, nb_ostreams = 0, nb_max_ostreams = 0, step;
-
+    av_log(NULL, AV_LOG_DEBUG, "nb_stream_maps %d\n", nb_stream_maps);
     AVFormatContext *is, *os;
     AVCodecContext *codec, *icodec;
     OutputStream *ost, **ost_table = NULL;
@@ -2604,10 +2606,13 @@ static int transcode(AVFormatContext **output_files,
         int fo = audio_channel_maps[i].out_file_index;
         int so = audio_channel_maps[i].out_stream_index;
 
+        av_log(NULL, AV_LOG_DEBUG, "DEBUG: Input filename: %s, output stream: %s", input_files[fi].ctx->filename, os[so].av_class->class_name);
+
         /* Build array of streams touched by audio_channel_mapping */
         if (!audio_mapped_streams[fo*nb_max_ostreams+so])
             nb_audio_mapped_streams++;
         audio_mapped_streams[fo*nb_max_ostreams+so] = 1;
+
 
         if (fi < 0 || fi > nb_input_files - 1 ||
             si < 0 || si > input_files[fi].ctx->nb_streams - 1) {
@@ -3285,21 +3290,27 @@ static int transcode(AVFormatContext **output_files,
         for(i=0;i<nb_ostreams;i++) {
             ost = ost_table[i];
             for(j=0;j<ost->nb_source_indexes;j++) {
-            av_log(NULL, AV_LOG_INFO, "  Stream #%d.%d -> #%d.%d",
-                    input_streams[ost->source_index[j]].file_index,
-                    input_streams[ost->source_index[j]].st->index,
-                    ost->file_index,
-                    ost->index);
-            if (ost->nb_audio_channel_maps > 0) {
-                av_log(NULL, AV_LOG_INFO, " [channel: %d -> %d]",
-                        ost->audio_channel_maps[j]->channel_index,
-                        ost->audio_channel_maps[j]->out_channel_index);
-            }
-            if (ost->sync_ist != &input_streams[ost->source_index[0]])
-                av_log(NULL, AV_LOG_INFO, " [sync #%d.%d]",
-                        ost->sync_ist->file_index,
-                        ost->sync_ist->st->index);
-            av_log(NULL, AV_LOG_INFO, "\n");
+            	// save the input file name for the link
+#ifdef MDEBUG
+            	char* inputFilename =  input_files[input_streams[ost->source_index[j]].file_index].ctx->filename;
+            	strcpy(ost->st->inputFilename, inputFilename);
+            	av_log(NULL, AV_LOG_DEBUG, "File %s -> Stream #%d.%d\n",ost->st->inputFilename, ost->file_index, ost->index);
+#endif
+				av_log(NULL, AV_LOG_INFO, "  Stream #%d.%d -> #%d.%d",
+						input_streams[ost->source_index[j]].file_index,
+						input_streams[ost->source_index[j]].st->index,
+						ost->file_index,
+						ost->index);
+				if (ost->nb_audio_channel_maps > 0) {
+					av_log(NULL, AV_LOG_INFO, " [channel: %d -> %d]",
+							ost->audio_channel_maps[j]->channel_index,
+							ost->audio_channel_maps[j]->out_channel_index);
+				}
+				if (ost->sync_ist != &input_streams[ost->source_index[0]])
+					av_log(NULL, AV_LOG_INFO, " [sync #%d.%d]",
+							ost->sync_ist->file_index,
+							ost->sync_ist->st->index);
+				av_log(NULL, AV_LOG_INFO, "\n");
             }
         }
     }
@@ -3500,18 +3511,19 @@ static int transcode(AVFormatContext **output_files,
         ist->dts = pkt.dts;
 
         //fprintf(stderr,"read #%d.%d size=%d\n", ist->file_index, ist->index, pkt.size);
-        if (output_packet(ist, ist_index, ost_table, nb_ostreams, &pkt) < 0) {
-            if (verbose >= 0)
-                av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d.%d\n",
-                        ist->file_index, ist->st->index);
-            if (exit_on_error) {
-                print_report(output_files, ost_table, nb_ostreams, 1, duration);
-                ffmpeg_exit(1);
-            }
-            av_free_packet(&pkt);
-            goto redo;
-        }
 
+        if (output_packet(ist, ist_index, ost_table, nb_ostreams, &pkt) < 0) {
+			av_log(NULL, AV_LOG_DEBUG, "OUTPUT PACKET ERROR\n");
+			if (verbose >= 0)
+				av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d.%d\n",
+						ist->file_index, ist->st->index);
+			if (exit_on_error) {
+				print_report(output_files, ost_table, nb_ostreams, 1, duration);
+				ffmpeg_exit(1);
+			}
+			av_free_packet(&pkt);
+			goto redo;
+		}
     discard_packet:
         if (ist && ist->st->codec->codec_id == CODEC_ID_RAWVIDEO) {
             if (ist->pkt_data_to_free)
@@ -5465,6 +5477,8 @@ int main(int argc, char **argv)
 
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
 
+    av_log(NULL, AV_LOG_DEBUG, "DEBUGGING: MAIN\n");
+
     if(argc>1 && !strcmp(argv[1], "-d")){
         run_as_daemon=1;
         verbose=-1;
@@ -5513,6 +5527,7 @@ int main(int argc, char **argv)
     }
 
     ti = getutime();
+
     if (transcode(output_files, nb_output_files, input_files, nb_input_files,
                   stream_maps, nb_stream_maps) < 0)
         ffmpeg_exit(1);
