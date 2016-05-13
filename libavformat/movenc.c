@@ -1578,11 +1578,10 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     } else {
         hdlr = (track->mode == MODE_MOV) ? "mhlr" : "\0\0\0\0";
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+        	hdlr_type = "vide";
 #ifdef MDEBUG
-        	hdlr_type = "videappl";
             descr = "Apple Video Media Handler";
 #else
-            hdlr_type = "vide";
             descr = "VideoHandler";
 #endif
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
@@ -1607,6 +1606,13 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0); /* Version & flags */
     avio_write(pb, hdlr, 4); /* handler */
     avio_wtag(pb, hdlr_type); /* handler type */
+#ifdef MDEBUG
+    char * qual = "appl";
+    avio_write(pb, qual,strlen(qual));
+    avio_zero(pb, 5);
+    avio_wb32(pb, 0x1002319);
+    avio_write(pb, descr, strlen(descr)); /* handler description */
+#else
     avio_wb32(pb ,0); /* reserved */
     avio_wb32(pb ,0); /* reserved */
     avio_wb32(pb ,0); /* reserved */
@@ -1615,6 +1621,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     avio_write(pb, descr, strlen(descr)); /* handler description */
     if (track && track->mode != MODE_MOV)
         avio_w8(pb, 0); /* c string */
+#endif
     return updateSize(pb, pos);
 }
 
