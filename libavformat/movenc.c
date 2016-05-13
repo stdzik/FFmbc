@@ -1316,7 +1316,7 @@ static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
     return curpos - pos;
 }
 
-static int mov_write_alis_tag(AVIOContext *pb)
+static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0);      /* size */
@@ -1371,14 +1371,18 @@ static int mov_write_alis_tag(AVIOContext *pb)
     avio_wb32(pb, 0x7600ffff);
     avio_zero(pb, 24);
     avio_wb16(pb, 0x6bc8);
-    updateSize16(pb, pos2, 2);  // write alis size
+    if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+        updateSize16(pb, pos2, 2);
+    } else if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+    	updateSize16(pb, pos2, 4);
+    }
     return updateSize(pb, pos);
 }
 /**
  * The version to handle real content file references. Assumes that content file is in the same
  * directory as quicktime file.
  */
-static int mov_write_dref_tag(AVIOContext *pb)
+static int mov_write_dref_tag(AVIOContext *pb, MOVTrack *track)
 {
     av_log(globalFormat, AV_LOG_DEBUG, "mov_write_dref_tag enter\n");
     av_log(globalFormat, AV_LOG_DEBUG, "dref tag input file: %s\n", globalFormat->cur_st->inputFilename);
@@ -1390,7 +1394,7 @@ static int mov_write_dref_tag(AVIOContext *pb)
     avio_wb32(pb, 0); /* version & flags */
     avio_wb32(pb, 1); /* entry count */
 
-    mov_write_alis_tag(pb);
+    mov_write_alis_tag(pb, track);
 
     av_log(globalFormat, AV_LOG_INFO, "mov_write_dref_tag exit\n");
 
@@ -1471,12 +1475,12 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
     return updateSize(pb, pos);
 }
 
-static int mov_write_dinf_tag(AVIOContext *pb)
+static int mov_write_dinf_tag(AVIOContext *pb, MOVTrack *track)
 {
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "dinf");
-    mov_write_dref_tag(pb);
+    mov_write_dref_tag(pb, track);
     return updateSize(pb, pos);
 }
 
@@ -1552,6 +1556,9 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
 {
     const char *hdlr, *descr = NULL, *hdlr_type = NULL;
     int64_t pos = avio_tell(pb);
+#ifdef MDEBUG
+    int32_t filler;
+#endif
 
     if (!track) { /* no media --> data handler */
 #ifdef MDEBUG
@@ -1568,13 +1575,19 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
         	hdlr_type = "vide";
 #ifdef MDEBUG
+        	filler = 0x1002319;
             descr = "Apple Video Media Handler";
 #else
             descr = "VideoHandler";
 #endif
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
             hdlr_type = "soun";
+#ifdef MDEBUG
+            filler = 0x1002119;
+            descr = "Apple Sound Media Handler";
+#else
             descr = "SoundHandler";
+#endif
         } else if (track->enc->codec_type == AVMEDIA_TYPE_DATA &&
                    track->enc->codec_tag == MKTAG('t','m','c','d')) {
             hdlr_type = "tmcd";
@@ -1598,7 +1611,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     char qual[] = "appl";
     avio_write(pb, qual, strlen(qual));
     avio_zero(pb, 5);
-    avio_wb32(pb, 0x1002319);
+    avio_wb32(pb, filler);
     avio_write(pb, descr, strlen(descr)); /* handler description */
 #else
     avio_wb32(pb ,0); /* reserved */
@@ -1647,7 +1660,7 @@ static int mov_write_minf_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
     }
     if (track->mode == MODE_MOV) /* FIXME: Why do it for MODE_MOV only ? */
         mov_write_hdlr_tag(pb, NULL);
-    mov_write_dinf_tag(pb);
+    mov_write_dinf_tag(pb, track);
     mov_write_stbl_tag(s, pb, track);
     return updateSize(pb, pos);
 }
@@ -2662,9 +2675,10 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
             size += sizeof(d10_klv_header) + 4;
         }
     } else {
-    	av_log(s, AV_LOG_DEBUG, "nocode %d\n", enc->codec_id);
 #ifdef MDEBUG
-    	if(enc->codec_id != CODEC_ID_MPEG2VIDEO)
+    	av_log(s, AV_LOG_DEBUG, "codecs %x %s\n", enc->codec_id, enc->codec_name);
+    	if(enc->codec_id != CODEC_ID_MPEG2VIDEO &&
+    	   enc->codec_id != CODEC_ID_PCM_S16LE)
 #endif
     		avio_write(pb, pkt->data, size);
     }
@@ -2724,7 +2738,9 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     trk->entry++;
     trk->sampleCount += samplesInChunk;
 #ifdef MDEBUG
-    if(enc->codec_id != CODEC_ID_MPEG2VIDEO) {
+    if(enc->codec_id != CODEC_ID_MPEG2VIDEO
+    			&&
+       enc->codec_id != CODEC_ID_PCM_S16LE) {
     	av_log(s, AV_LOG_DEBUG, "flush %d\n", size);
         mov->mdat_size += size;
         avio_flush(pb);
