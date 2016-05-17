@@ -41,6 +41,13 @@
 #include "rtpenc.h"
 #define MDEBUG
 
+#ifdef MDEBUG
+// Sets alis tag
+static void avio_zero(AVIOContext*pb, int count);
+static char* getFilename();
+static const char* replacechar(char* string, char src, char dest);
+#endif
+
 #undef NDEBUG
 #include <assert.h>
 
@@ -114,9 +121,23 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
                               MOVTrack *track)
 {
     int i;
-    int mode64 = 0; //   use 32 bit size variant if possible
+    int mode64 = 0; //use 32 bit size variant if possible
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
+#ifdef MDEBUG
+    avio_wtag(pb, "co64");
+    avio_wb64(pb, 0xA);
+    avio_wb64(pb, 0x0);
+//    avio_wb64(pb, 0x40000);
+//    avio_wb64(pb, 0x80000);
+//    avio_wb64(pb, 0xc0000);
+//    avio_wb64(pb, 0x100000);
+//    avio_wb64(pb, 0x140000);
+//    avio_wb64(pb, 0x180000);
+//    avio_wb64(pb, 0x1c0000);
+//    avio_wb64(pb, 0x200000);
+//    avio_wb64(pb, 0x240000);
+ #else
     if (track->cluster[track->entry-1].pos+mov->stco_offset > UINT32_MAX) {
         mode64 = 1;
         avio_wtag(pb, "co64");
@@ -129,9 +150,11 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
             continue;
         if(mode64 == 1)
             avio_wb64(pb, track->cluster[i].pos+mov->stco_offset);
-        else
-            avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
+        else {
+           avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
+        }
     }
+#endif
     return updateSize(pb, pos);
 }
 
@@ -144,6 +167,10 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "stsz");
+#ifdef MDEBUG
+    avio_wb32(pb, 1);
+    avio_wb32(pb, 0x1322a6);
+#else
     avio_wb32(pb, 0); /* version & flags */
 
     for (i=0; i<track->entry; i++) {
@@ -170,6 +197,7 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
             }
         }
     }
+#endif
     return updateSize(pb, pos);
 }
 
@@ -184,6 +212,15 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
     avio_wtag(pb, "stsc");
     avio_wb32(pb, 0); // version & flags
     entryPos = avio_tell(pb);
+#ifdef MDEBUG
+    avio_wb32(pb, 0x2);
+    avio_wb32(pb, 0x1);
+    avio_wb32(pb, 0x2000);
+    avio_wb32(pb, 0x1);
+    avio_wb32(pb, 0xA);
+    avio_wb32(pb, 0x122a6);
+    avio_wb32(pb, 0x1);
+#else
     avio_wb32(pb, track->chunkCount); // entry count
     for (i=0; i<track->entry; i++) {
         if(oldval != track->cluster[i].samplesInChunk && track->cluster[i].chunkNum)
@@ -199,7 +236,7 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
     avio_seek(pb, entryPos, SEEK_SET);
     avio_wb32(pb, index); // rewrite size
     avio_seek(pb, curpos, SEEK_SET);
-
+#endif
     return updateSize(pb, pos);
 }
 
@@ -479,6 +516,7 @@ static int mov_get_lpcm_flags(enum CodecID codec_id)
 
 static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
 {
+	av_log(NULL, AV_LOG_DEBUG, "codec: %x\n", track->enc->codec_id);
     int64_t pos = avio_tell(pb);
     int version = 0;
     uint32_t tag = track->tag;
@@ -496,7 +534,13 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
     }
 
     avio_wb32(pb, 0); /* size */
+#ifdef MDEBUG
+    char atag[] = "sowt";
+    avio_wl32(pb, *(int*)&atag);
+    version = 1;
+#else
     avio_wl32(pb, tag); // store it byteswapped
+#endif
     avio_wb32(pb, 0); /* Reserved */
     avio_wb16(pb, 0); /* Reserved */
     avio_wb16(pb, 1); /* Data-reference index, XXX  == 1 */
@@ -528,7 +572,11 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
                 avio_wb16(pb, 8); /* bits per sample */
             else
                 avio_wb16(pb, 16);
+#ifdef MDEBUG
+            avio_wb16(pb, 0xFFFF);
+#else
             avio_wb16(pb, track->audio_vbr ? -2 : 0); /* compression ID */
+#endif
         } else { /* reserved for mp4/3gp */
             if (track->enc->codec_id == CODEC_ID_PCM_S16BE)
                 avio_wb16(pb, track->enc->channels);
@@ -570,7 +618,6 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
         mov_write_extradata_tag(pb, track);
     else if(track->vosLen > 0)
         mov_write_glbl_tag(pb, track);
-
     return updateSize(pb, pos);
 }
 
@@ -986,12 +1033,10 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     avio_wb32(pb, 0); /* size */
 #ifdef MDEBUG
     // sets the encoder to xd59 instead of m2v1
-	union {
-		char b[4];
-		int i;
-	} tag;
-	tag.b[0] = 'x'; tag.b[1] = 'd'; tag.b[2] = '5'; tag.b[3] = '9';
-	avio_wl32(pb, tag.i);
+    //tag.b[0] = 'x'; tag.b[1] = 'd'; tag.b[2] = '5'; tag.b[3] = '9';
+	//avio_wl32(pb, tag.i);
+    char tag[] = "xd59";
+    avio_wl32(pb, *(int*)&tag);
 #else
     avio_wl32(pb, track->tag); // store it byteswapped
 #endif
@@ -1265,6 +1310,15 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
     uint32_t atom_size;
     int i;
 
+#ifdef MDEBUG
+    atom_size = 0x18;
+    avio_wb32(pb, atom_size); /* size */
+    avio_wtag(pb, "stts");
+    avio_wb32(pb, 0); /* version & flags */
+    avio_wb32(pb, 1);
+    avio_wb32(pb, 0x1322a6);
+    avio_wb32(pb, 1);
+#else
     if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO && !track->audio_vbr) {
         stts_entries = av_malloc(sizeof(*stts_entries)); /* one entry */
         stts_entries[0].count = track->sampleCount;
@@ -1296,14 +1350,11 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
         avio_wb32(pb, stts_entries[i].duration);
     }
     av_free(stts_entries);
+#endif
     return atom_size;
 }
 
 #ifdef MDEBUG
-// Sets alis tag
-static void avio_zero(AVIOContext*pb, int count);
-static char* getFilename();
-static const char* replacechar(char* string, char src, char dest);
 
 // set record size in 2 byte field.
 static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
@@ -1366,15 +1417,21 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_put_str(pb, globalFormat->cur_st->inputFilename);
 
     // complete end stuff
-    avio_wb32(pb, 0x000b0006);
-    avio_wb32(pb, 0x00000002);
-    avio_wb32(pb, 0x7600ffff);
-    avio_zero(pb, 24);
-    avio_wb16(pb, 0x6bc8);
     if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+        avio_wb32(pb, 0x000b0006);
+        avio_wb32(pb, 0x00000002);
+        avio_wb32(pb, 0x7600ffff);
+        avio_zero(pb, 24);
+        avio_wb16(pb, 0x6bc8);
         updateSize16(pb, pos2, 2);
-    } else if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
-    	updateSize16(pb, pos2, 4);
+    } else if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
+    	avio_wb16(pb, 0);
+    	avio_w8(pb, 0xb);
+    	avio_wb32(pb, 0x60000);
+    	avio_wb32(pb, 0x27600);
+    	avio_wb16(pb, 0xffff);
+        avio_zero(pb, 22);
+    	updateSize16(pb, pos2, 2);
     }
     return updateSize(pb, pos);
 }
@@ -1480,7 +1537,11 @@ static int mov_write_dinf_tag(AVIOContext *pb, MOVTrack *track)
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "dinf");
+#ifdef MDEBUG
     mov_write_dref_tag(pb, track);
+#else
+    mov_write_dref_tag(pb);
+#endif
     return updateSize(pb, pos);
 }
 
@@ -1564,6 +1625,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
         hdlr = "dhlr";
         hdlr_type = "alis";
+        filler = 0x1002E18;
         descr = "Apple Alias Data Handler";
 #else
         hdlr = "dhlr";
@@ -1610,7 +1672,8 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
     char qual[] = "appl";
     avio_write(pb, qual, strlen(qual));
-    avio_zero(pb, 5);
+    avio_wb32(pb, 0x1);
+    avio_w8(pb, 0x0);
     avio_wb32(pb, filler);
     avio_write(pb, descr, strlen(descr)); /* handler description */
 #else
