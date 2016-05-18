@@ -129,7 +129,7 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     	avio_wtag(pb, "co64");
 		avio_wb32(pb, 0x0);
 		avio_wb32(pb, track->chunkCount);
-		for(int iCnt = 0, pos = 0x0; iCnt < track->entry; iCnt++, pos += 0x1000) {
+		for(int iCnt = 0, pos = 0x0; iCnt < track->entry; iCnt++, pos += 0x10000) {
 			avio_wb64(pb, pos);
 		}
     }
@@ -219,14 +219,18 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0); // version & flags
     entryPos = avio_tell(pb);
 #ifdef MDEBUG
-    avio_wb32(pb, 0x2);
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0x2000);
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0xD63);
-    avio_wb32(pb, 0x18881);
-    avio_wb32(pb, 0x1);
-#else
+    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
+    {
+    	avio_wb32(pb, 0x2);
+		avio_wb32(pb, 0x1);
+		avio_wb32(pb, 0x20000);
+		avio_wb32(pb, 0x1);
+		avio_wb32(pb, 0xa);
+		avio_wb32(pb, 0x122a6);
+		avio_wb32(pb, 0x1);
+    } else
+#endif
+    {
     avio_wb32(pb, track->chunkCount); // entry count
     for (i=0; i<track->entry; i++) {
         if(oldval != track->cluster[i].samplesInChunk && track->cluster[i].chunkNum)
@@ -242,7 +246,7 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
     avio_seek(pb, entryPos, SEEK_SET);
     avio_wb32(pb, index); // rewrite size
     avio_seek(pb, curpos, SEEK_SET);
-#endif
+    }
     return updateSize(pb, pos);
 }
 
@@ -1314,7 +1318,7 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
     uint32_t entries = -1;
     uint32_t atom_size;
     int i;
-#ifdef DEBUG
+#ifdef MDEBUG
 		atom_size = 0x18;
 		avio_wb32(pb, atom_size); /* size */
 		avio_wtag(pb, "stts");
