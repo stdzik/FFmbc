@@ -214,9 +214,10 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     {
+    	const int CHUNK_SIZE = 0x20000;
     	avio_wb32(pb, 0x1);
 		avio_wb32(pb, 0x1);
-		avio_wb32(pb, 0x20000);
+		avio_wb32(pb, CHUNK_SIZE);
 		avio_wb32(pb, 0x1);
     } else
 #endif
@@ -1043,17 +1044,14 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     avio_wb16(pb, 0); /* Reserved */
     avio_wb16(pb, 1); /* Data-reference index */
 
-#ifdef MDEBUG
-    avio_wb16(pb, 1); /* Codec stream version */
-    avio_wb16(pb, 1); /* Codec stream revision (=0) */
-    avio_wtag(pb, "appl");
-    avio_wb32(pb, 0x200); /* Temporal Quality = normal */
-    avio_wb32(pb, 0x200); /* Spatial Quality = normal */
-#else
     avio_wb16(pb, 0); /* Codec stream version */
     avio_wb16(pb, 0); /* Codec stream revision (=0) */
     if (track->mode == MODE_MOV) {
+#ifdef MDEBUG
+        avio_wtag(pb, "appl"); /* Vendor */
+#else
         avio_wtag(pb, "FFMP"); /* Vendor */
+#endif
         if (ff_is_intra_only_codec(track->enc)) {
             avio_wb32(pb, 0); /* Temporal Quality */
             avio_wb32(pb, 0x400); /* Spatial Quality = lossless*/
@@ -1066,7 +1064,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
         avio_wb32(pb, 0); /* Reserved */
         avio_wb32(pb, 0); /* Reserved */
     }
-#endif
+
     avio_wb16(pb, track->enc->width); /* Video width */
     avio_wb16(pb, track->height); /* Video height */
     avio_wb32(pb, 0x00480000); /* Horizontal resolution 72dpi */
@@ -1078,40 +1076,11 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     /* FIXME not sure, ISO 14496-1 draft where it shall be set to 0 */
 #ifdef MDEBUG
     av_strlcpy(compressor_name, "GVG XDCAM HD422 720p60-50 NTSC", 32);
-    avio_w8(pb, 0x1E);
-    avio_write(pb, compressor_name, 30);
-#else
+#endif
     if (track->mode == MODE_MOV && track->enc->codec && track->enc->codec->name)
         av_strlcpy(compressor_name,track->enc->codec->name,32);
     avio_w8(pb, strlen(compressor_name));
     avio_write(pb, compressor_name, 31);
-#endif
-
-#ifdef MDEBUG
-    // write clap atom
-    avio_w8(pb, 0);
-    avio_wb16(pb, 0x18); /* Reserved */
-    avio_wb16(pb, 0xffff); /* Reserved */
-    avio_wb32(pb, 0x28);
-    avio_wtag(pb, "clap");
-    avio_wb32(pb, 0x4e0);
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0x2be);
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0x0);
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0x0);
-    avio_wb32(pb, 0x1);
-    // write pasp atom
-    avio_wb32(pb, 0x10);
-    avio_wtag(pb, "pasp");
-    avio_wb32(pb, 0x1);
-    avio_wb32(pb, 0x1);
-    // write color and fiel tags
-    mov_write_colr_tag(s, pb, track);
-    mov_write_fiel_tag(pb, track);
-    avio_wb32(pb, 0); // padding for FCP
-#else
 
     if (track->mode == MODE_MOV && track->enc->bits_per_coded_sample)
         avio_wb16(pb, track->enc->bits_per_coded_sample);
@@ -1151,7 +1120,6 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
         mov_write_colr_tag(s, pb, track);
         avio_wb32(pb, 0); // padding for FCP
     }
-#endif
 
     av_log(s, AV_LOG_DEBUG, "mov_write_video_tag exit\n");
     return updateSize(pb, pos);
@@ -1404,23 +1372,6 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_w8(pb, '<');
     avio_put_str(pb, globalFormat->cur_st->inputFilename);
 
-    // complete end stuff
-    if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
-        avio_wb32(pb, 0x000b0006);
-        avio_wb32(pb, 0x00000002);
-        avio_wb32(pb, 0x7600ffff);
-        avio_zero(pb, 24);
-        avio_wb16(pb, 0x6bc8);
-        updateSize16(pb, pos2, 2);
-    } else if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
-    	avio_wb16(pb, 0);
-    	avio_w8(pb, 0xb);
-    	avio_wb32(pb, 0x60000);
-    	avio_wb32(pb, 0x27600);
-    	avio_wb16(pb, 0xffff);
-        avio_zero(pb, 22);
-    	updateSize16(pb, pos2, 2);
-    }
     return updateSize(pb, pos);
 }
 /**
@@ -1605,15 +1556,11 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
 {
     const char *hdlr, *descr = NULL, *hdlr_type = NULL;
     int64_t pos = avio_tell(pb);
-#ifdef MDEBUG
-    int32_t filler;
-#endif
 
     if (!track) { /* no media --> data handler */
 #ifdef MDEBUG
         hdlr = "dhlr";
         hdlr_type = "alis";
-        filler = 0x1002E18;
         descr = "Apple Alias Data Handler";
 #else
         hdlr = "dhlr";
@@ -1625,7 +1572,6 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
         	hdlr_type = "vide";
 #ifdef MDEBUG
-        	filler = 0x1002319;
             descr = "Apple Video Media Handler";
 #else
             descr = "VideoHandler";
@@ -1633,7 +1579,6 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
             hdlr_type = "soun";
 #ifdef MDEBUG
-            filler = 0x1002119;
             descr = "Apple Sound Media Handler";
 #else
             descr = "SoundHandler";
@@ -1662,7 +1607,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     avio_write(pb, qual, strlen(qual));
     avio_wb32(pb, 0x1);
     avio_w8(pb, 0x0);
-    avio_wb32(pb, filler);
+    avio_wb32(pb, 0);
     avio_write(pb, descr, strlen(descr)); /* handler description */
 #else
     avio_wb32(pb ,0); /* reserved */
