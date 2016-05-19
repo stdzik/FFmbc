@@ -127,14 +127,16 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
     	avio_wtag(pb, "co64");
+    	const int OFFSETCOUNT = 0xa;
+    	const int OFFSET = 0x40000;
 		avio_wb32(pb, 0x0);
-		avio_wb32(pb, track->chunkCount);
-		for(int iCnt = 0, pos = 0x0; iCnt < track->entry; iCnt++, pos += 0x10000) {
+		avio_wb32(pb, OFFSETCOUNT);
+		for(int iCnt = 0, pos = 0x0; iCnt < OFFSETCOUNT; iCnt++, pos += OFFSET) {
 			avio_wb64(pb, pos);
 		}
     }
     else
- #endif
+#endif
     {
     if (track->cluster[track->entry-1].pos+mov->stco_offset > UINT32_MAX) {
         mode64 = 1;
@@ -167,14 +169,6 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "stsz");
-#ifndef MDEBUG
-    avio_wb32(pb, 0);
-    avio_wb32(pb, 1);
-    if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
-    	avio_wb32(pb, 0x88ef1);
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_wb32(pb, 0x1ac58881);
-#else
     avio_wb32(pb, 0); /* version & flags */
 
     for (i=0; i<track->entry; i++) {
@@ -203,7 +197,6 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
             }
         }
     }
-#endif
     return updateSize(pb, pos);
 }
 
@@ -221,12 +214,9 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     {
-    	avio_wb32(pb, 0x2);
+    	avio_wb32(pb, 0x1);
 		avio_wb32(pb, 0x1);
 		avio_wb32(pb, 0x20000);
-		avio_wb32(pb, 0x1);
-		avio_wb32(pb, 0xa);
-		avio_wb32(pb, 0x122a6);
 		avio_wb32(pb, 0x1);
     } else
 #endif
@@ -582,11 +572,11 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
                 avio_wb16(pb, 8); /* bits per sample */
             else
                 avio_wb16(pb, 16);
-#ifdef MDEBUG
-            avio_wb16(pb, 0xFFFF);
-#else
+//#ifdef MDEBUG
+//            avio_wb16(pb, 0xFFFF);
+//#else
             avio_wb16(pb, track->audio_vbr ? -2 : 0); /* compression ID */
-#endif
+//#endif
         } else { /* reserved for mp4/3gp */
             if (track->enc->codec_id == CODEC_ID_PCM_S16BE)
                 avio_wb16(pb, track->enc->channels);
@@ -1318,15 +1308,6 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
     uint32_t entries = -1;
     uint32_t atom_size;
     int i;
-#ifdef MDEBUG
-		atom_size = 0x18;
-		avio_wb32(pb, atom_size); /* size */
-		avio_wtag(pb, "stts");
-		avio_wb32(pb, 0); /* version & flags */
-		avio_wb32(pb, 1);
-		avio_wb32(pb, 0x1ac58881);
-		avio_wb32(pb, 1);
-#else
     if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO && !track->audio_vbr) {
         stts_entries = av_malloc(sizeof(*stts_entries)); /* one entry */
         stts_entries[0].count = track->sampleCount;
@@ -1358,7 +1339,6 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
         avio_wb32(pb, stts_entries[i].duration);
     }
     av_free(stts_entries);
-#endif
     return atom_size;
 }
 
