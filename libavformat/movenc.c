@@ -42,6 +42,9 @@
 #define MDEBUG
 
 #ifdef MDEBUG
+const int CLIP_SIZE = 0x40000 * 0xA;
+const int CHUNK_SIZE = 0x40000;
+const int CHUNK_COUNT = CLIP_SIZE/CHUNK_SIZE;
 // Sets alis tag
 static void avio_zero(AVIOContext*pb, int count);
 static char* getFilename();
@@ -127,8 +130,8 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
     	avio_wtag(pb, "co64");
-    	const int OFFSETCOUNT = 0xa;
-    	const int OFFSET = 0x40000;
+    	const int OFFSETCOUNT = track->chunkCount;
+    	const int OFFSET = 2*track->cluster[0].size;
 		avio_wb32(pb, 0x0);
 		avio_wb32(pb, OFFSETCOUNT);
 
@@ -217,10 +220,9 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     {
-    	const int CHUNK_SIZE = 0x20000;
     	avio_wb32(pb, 0x1);
 		avio_wb32(pb, 0x1);
-		avio_wb32(pb, CHUNK_SIZE);
+		avio_wb32(pb, track->cluster[0].size);//CHUNK_SIZE);
 		avio_wb32(pb, 0x1);
     } else
 #endif
