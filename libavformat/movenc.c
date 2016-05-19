@@ -131,8 +131,11 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     	const int OFFSET = 0x40000;
 		avio_wb32(pb, 0x0);
 		avio_wb32(pb, OFFSETCOUNT);
-		for(int iCnt = 0, pos = 0x0; iCnt < OFFSETCOUNT; iCnt++, pos += OFFSET) {
-			avio_wb64(pb, pos);
+
+		for(int iCnt = 0, pos = 0x0;
+			iCnt < OFFSETCOUNT;
+			iCnt++, pos += OFFSET) {
+				avio_wb64(pb, pos);
 		}
     }
     else
@@ -573,11 +576,8 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
                 avio_wb16(pb, 8); /* bits per sample */
             else
                 avio_wb16(pb, 16);
-//#ifdef MDEBUG
-//            avio_wb16(pb, 0xFFFF);
-//#else
+
             avio_wb16(pb, track->audio_vbr ? -2 : 0); /* compression ID */
-//#endif
         } else { /* reserved for mp4/3gp */
             if (track->enc->codec_id == CODEC_ID_PCM_S16BE)
                 avio_wb16(pb, track->enc->channels);
@@ -1034,7 +1034,6 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     avio_wb32(pb, 0); /* size */
 #ifdef MDEBUG
     // sets the encoder to xd59 instead of m2v1
-	//avio_wl32(pb, tag.i);
     char tag[] = "xd59";
     avio_wl32(pb, *(int*)&tag);
 #else
