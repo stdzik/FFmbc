@@ -645,6 +645,9 @@ typedef struct AVStream {
      * NOT PART OF PUBLIC API
      */
     int request_probe;
+
+    char inputFilename[1024];   // added by SCD for POC
+
 } AVStream;
 
 #define AV_PROGRAM_RUNNING 1
