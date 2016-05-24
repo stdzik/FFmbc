@@ -21,6 +21,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+/**
+ * Instructions on timecodes:
+ * 		The MovMuxContexttimecode field must be set. This means it must
+ * 		be changed from const to a regular variable in movenc.h
+ *
+ * 		Secondly, the globalFormat->cur_st field is not set in the time code
+ * 		stream.
+ *
+ * 		And I still can't get it to work.
+ */
+
 #include "movenc.h"
 #include "avformat.h"
 #include "metadata.h"
@@ -107,6 +118,7 @@ static AVFormatContext *globalFormat;
 static int startSlash = -1;
 static int endSlash = -1;
 char parentDir[100] = "";
+static int timeCodeStream;
 
 //FIXME support 64 bit variant with wide placeholders
 static int64_t updateSize(AVIOContext *pb, int64_t pos)
@@ -188,13 +200,11 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
     if (equalChunks) {
         int sSize = track->cluster[0].size/track->cluster[0].entries;
         sSize = FFMAX(1, sSize); // adpcm mono case could make sSize == 0
-        av_log(NULL, AV_LOG_DEBUG, "STSZ size %d entries %x\n", sSize, entries);
         avio_wb32(pb, sSize); // sample size
         avio_wb32(pb, entries); // sample count
     }
     else {
         avio_wb32(pb, 0); // sample size
-        av_log(NULL, AV_LOG_DEBUG, "Unequal STSZ entries %x\n", entries);
         avio_wb32(pb, entries); // sample count
         for (i=0; i<track->entry; i++) {
             for (j=0; j<track->cluster[i].entries; j++) {
@@ -1326,13 +1336,29 @@ static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
 
 static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
+	MOVMuxContext* mov = globalFormat->priv_data;
+	int timecode_track = mov->timecode_track;
+
+	av_log(NULL, AV_LOG_DEBUG, "timecode track and ID %d %d\n",
+			timecode_track,
+			track->trackID);
+	if(mov->tracks[timecode_track].trackID == track->trackID) {
+		av_log(NULL, AV_LOG_DEBUG, "trackID found. Return %d %d\n",
+				timecode_track,
+				track->trackID);
+		return 0;
+	}
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0);      /* size */
     avio_wtag(pb, "alis");
     avio_wb32(pb, 0); /* version & flags */
-
-    	// Defined fields (150 bytes)
+    // Defined fields (150 bytes)
     // set reference info
+    char *inputFilename = "";
+    if(globalFormat->cur_st)
+    	inputFilename = globalFormat->cur_st->inputFilename;
+    else
+        return updateSize(pb, pos);
     avio_wb32(pb, 0); // user name/ app
     int64_t pos2 = avio_tell(pb);
     avio_wb16(pb, 0); // size
@@ -1367,11 +1393,11 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_w8(pb, '=');
 
     // put in path with '/' replaced by ':'
-    avio_wb32(pb, strlen(globalFormat->cur_st->inputFilename));
-    avio_put_str(pb, replacechar(globalFormat->cur_st->inputFilename, '/', ':'));
+    avio_wb32(pb, strlen(inputFilename));
+    avio_put_str(pb, replacechar(inputFilename, '/', ':'));
     avio_wb32(pb, 0x00001200);
     avio_w8(pb, '<');
-    avio_put_str(pb, globalFormat->cur_st->inputFilename);
+    avio_put_str(pb, inputFilename);
 
     return updateSize(pb, pos);
 }
@@ -1382,7 +1408,6 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 static int mov_write_dref_tag(AVIOContext *pb, MOVTrack *track)
 {
     av_log(globalFormat, AV_LOG_DEBUG, "mov_write_dref_tag enter\n");
-    av_log(globalFormat, AV_LOG_DEBUG, "dref tag input file: %s\n", globalFormat->cur_st->inputFilename);
     int64_t pos = avio_tell(pb);
 
     // set dref atom
@@ -2346,6 +2371,7 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
     avio_wb32(pb, 0); /* size placeholder*/
     avio_wtag(pb, "moov");
 
+
     for (i=0; i<mov->nb_streams; i++) {
         MOVTrack *track = &mov->tracks[i];
         int64_t first_pts, first_dec_pts;
@@ -2850,6 +2876,10 @@ static int mov_write_header(AVFormatContext *s)
     MOVMuxContext *mov = s->priv_data;
     AVDictionaryEntry *t;
     int i, hint_track = 0;
+
+#ifdef MDEBUG
+	mov->timecode = "10:35:22:18";
+#endif
 
     if (!s->pb->seekable) {
         av_log(s, AV_LOG_ERROR, "muxer does not support non seekable output\n");

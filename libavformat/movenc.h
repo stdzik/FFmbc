@@ -118,7 +118,7 @@ typedef struct MOVMuxContext {
     int     nb_streams;
     int     chapter_track; ///< qt chapter track number
     int     timecode_track; ///< timecode track number
-    const char *timecode;
+    char *timecode;
     int64_t mdat_pos;
     uint64_t mdat_size;
     MOVTrack *tracks;
