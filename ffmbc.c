@@ -18,6 +18,7 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+#define MDEBUG
 
 #include "config.h"
 #include <ctype.h>
@@ -45,6 +46,9 @@
 #include "libavutil/avstring.h"
 #include "libavutil/libm.h"
 #include "libavformat/os_support.h"
+#ifdef MDEBUG
+#include "libavformat/movenc.h"
+#endif
 
 #if CONFIG_AVFILTER
 # include "libavfilter/avcodec.h"
@@ -84,7 +88,6 @@
 
 #include "libavutil/avassert.h"
 
-#define MDEBUG
 
 const char program_name[] = "FFmbc";
 const int program_birth_year = 2008;
@@ -126,6 +129,9 @@ static const OptionDef options[];
 #define MAX_FILES 100
 #define MAX_STREAMS 1024    /* arbitrary sanity check value */
 static const char *last_asked_format = NULL;
+#ifdef MDEBUG
+static const char *cliTimecode = NULL;
+#endif
 static double *ts_scale;
 static int  nb_ts_scale;
 
@@ -5259,6 +5265,14 @@ static int opt_target(const char *opt, const char *arg)
     return 0;
 }
 
+#ifdef MDEBUG
+static int opt_timecode(const char *opt, const char *arg)
+{
+	cliTimecode = arg;
+	return 0;
+}
+#endif
+
 static int opt_vstats_file(const char *opt, const char *arg)
 {
     av_free (vstats_filename);
@@ -5335,6 +5349,9 @@ static int opt_deinterlace(const char *opt, const char *arg)
 static const OptionDef options[] = {
     /* main options */
 #include "cmdutils_common_opts.h"
+#ifdef MDEBUG
+	{"timecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode", "timecode" },
+#endif
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "fmt" },
     { "i", HAS_ARG, {(void*)opt_input_file}, "input file name", "filename" },
     { "y", OPT_BOOL, {(void*)&file_overwrite}, "overwrite output files" },
@@ -5527,6 +5544,14 @@ int main(int argc, char **argv)
     }
 
     ti = getutime();
+
+#ifdef MDEBUG
+    for(int i = 0; i < nb_output_files; i++) {
+    	MOVMuxContext* mov = output_files[i]->priv_data;
+    	mov->timecode = cliTimecode; // (cliTimecode) ? cliTimecode : "00:00:00:00";
+    }
+    av_log(NULL, AV_LOG_DEBUG, "timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
+#endif
 
     if (transcode(output_files, nb_output_files, input_files, nb_input_files,
                   stream_maps, nb_stream_maps) < 0)
