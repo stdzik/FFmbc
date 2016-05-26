@@ -2877,10 +2877,6 @@ static int mov_write_header(AVFormatContext *s)
     AVDictionaryEntry *t;
     int i, hint_track = 0;
 
-#ifdef MDEBUG
-	mov->timecode = "10:35:22:18";
-#endif
-
     if (!s->pb->seekable) {
         av_log(s, AV_LOG_ERROR, "muxer does not support non seekable output\n");
         return -1;
