@@ -2604,6 +2604,8 @@ static int transcode(AVFormatContext **output_files,
     if (!audio_mapped_streams)
         goto fail;
 
+    av_log(NULL, AV_LOG_DEBUG, "nb streams %d audio mapped streams %d\n", nb_ostreams, audio_mapped_streams);
+
     /* Sanity check audio channel mapping */
     for (i = 0; i < nb_audio_channel_maps; i++) {
         int fi = audio_channel_maps[i].file_index;
@@ -2612,7 +2614,8 @@ static int transcode(AVFormatContext **output_files,
         int fo = audio_channel_maps[i].out_file_index;
         int so = audio_channel_maps[i].out_stream_index;
 
-        av_log(NULL, AV_LOG_DEBUG, "DEBUG: Input filename: %s, output stream: %s", input_files[fi].ctx->filename, os[so].av_class->class_name);
+        av_log(NULL, AV_LOG_DEBUG, "DEBUG: Input filename: %s, output stream: %d.%d\n",
+        		input_files[fi].ctx->filename, fo, so);
 
         /* Build array of streams touched by audio_channel_mapping */
         if (!audio_mapped_streams[fo*nb_max_ostreams+so])
@@ -4793,7 +4796,29 @@ static int opt_output_file(const char *opt, const char *filename)
         if (data_disable)     use_data     = 0;
 
         if (use_video)    new_video_stream(oc, nb_output_files);
-        if (use_audio)    new_audio_stream(oc, nb_output_files);
+        /**
+         * SCD - This seems to be where the problem is. We need to create a new audio stream for each output
+         * stream in the audio map. We can assume (for now) that each map entry is another stream, so the number
+         * of maps tell us how many streams we need.
+         *
+         * If there are no maps, we just use the use_audio flag to see if we should create one stream.
+         */
+#ifdef MDEBUG
+        if (use_audio)
+        {
+        	if(nb_audio_channel_maps > 0) {
+            	av_log(NULL, AV_LOG_DEBUG, "Use audio: maps %d\n", nb_audio_channel_maps);
+            	for(int i = 0; i < nb_audio_channel_maps; i++) {
+            		new_audio_stream(oc, nb_output_files);
+            		av_log(NULL, AV_LOG_DEBUG, "NUMBER OF STREAMS %d\n", oc->nb_streams);
+            	}
+        	} else {
+                new_audio_stream(oc, nb_output_files);
+        	}
+       	}
+#else
+        if (use_audio)new_audio_stream(oc, nb_output_files);
+#endif
         if (use_subtitle) new_subtitle_stream(oc, nb_output_files);
         if (use_data)     new_data_stream(oc, nb_output_files);
 
@@ -5548,7 +5573,8 @@ int main(int argc, char **argv)
 #ifdef MDEBUG
     for(int i = 0; i < nb_output_files; i++) {
     	MOVMuxContext* mov = output_files[i]->priv_data;
-    	mov->timecode = cliTimecode; // (cliTimecode) ? cliTimecode : "00:00:00:00";
+    	if(cliTimecode)
+    		mov->timecode = cliTimecode;
     }
     av_log(NULL, AV_LOG_DEBUG, "timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
 #endif
