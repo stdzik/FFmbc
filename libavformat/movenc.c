@@ -22,14 +22,11 @@
  */
 
 /**
- * Instructions on timecodes:
+ * SCD Instructions on timecodes:
  * 		The MovMuxContexttimecode field must be set. This means it must
  * 		be changed from const to a regular variable in movenc.h
  *
- * 		Secondly, the globalFormat->cur_st field is not set in the time code
- * 		stream.
- *
- * 		And I still can't get it to work.
+ * 		It currently works for both timecodes set and not set.
  */
 
 #include "movenc.h"
@@ -1339,26 +1336,25 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 	MOVMuxContext* mov = globalFormat->priv_data;
 	int timecode_track = mov->timecode_track;
 
-	av_log(NULL, AV_LOG_DEBUG, "timecode track and ID %d %d\n",
+	av_log(NULL, AV_LOG_DEBUG, "mov_write_alis_tag %s timecode track and ID %d %d\n",
+			mov->timecode,
 			timecode_track,
 			track->trackID);
-	if(mov->tracks[timecode_track].trackID == track->trackID) {
-		av_log(NULL, AV_LOG_DEBUG, "trackID found. Return %d %d\n",
-				timecode_track,
-				track->trackID);
-		return 0;
-	}
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0);      /* size */
     avio_wtag(pb, "alis");
+    // if it is a timecode track
+	if(mov->tracks[timecode_track].trackID == track->trackID && mov->timecode) {
+		av_log(NULL, AV_LOG_DEBUG, "trackID found. Return %d %d\n",
+				timecode_track,
+				track->trackID);
+		avio_wb32(pb, 0x1);
+	    return updateSize(pb, pos);
+	}
     avio_wb32(pb, 0); /* version & flags */
     // Defined fields (150 bytes)
     // set reference info
-    char *inputFilename = "";
-    if(globalFormat->cur_st)
-    	inputFilename = globalFormat->cur_st->inputFilename;
-    else
-        return updateSize(pb, pos);
+	char *inputFilename = globalFormat->cur_st->inputFilename;
     avio_wb32(pb, 0); // user name/ app
     int64_t pos2 = avio_tell(pb);
     avio_wb16(pb, 0); // size
