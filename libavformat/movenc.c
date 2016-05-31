@@ -153,22 +153,28 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     else
 #endif
     {
-    if (track->cluster[track->entry-1].pos+mov->stco_offset > UINT32_MAX) {
-        mode64 = 1;
-        avio_wtag(pb, "co64");
-    } else
-        avio_wtag(pb, "stco");
-    avio_wb32(pb, 0); /* version & flags */
-    avio_wb32(pb, track->chunkCount); /* entry count */
-    for (i=0; i<track->entry; i++) {
-        if(!track->cluster[i].chunkNum)
-            continue;
-        if(mode64 == 1)
-            avio_wb64(pb, track->cluster[i].pos+mov->stco_offset);
-        else {
-           avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
-        }
-    }
+#ifdef MDEBUG
+		mode64 = 1;
+		avio_wtag(pb, "co64");
+#else
+    	if (track->cluster[track->entry-1].pos+mov->stco_offset > UINT32_MAX) {
+			mode64 = 1;
+			avio_wtag(pb, "co64");
+		} else {
+			avio_wtag(pb, "stco");
+		}
+#endif
+		avio_wb32(pb, 0); /* version & flags */
+		avio_wb32(pb, track->chunkCount); /* entry count */
+		for (i=0; i<track->entry; i++) {
+			if(!track->cluster[i].chunkNum)
+				continue;
+			if(mode64 == 1)
+				avio_wb64(pb, track->cluster[i].pos+mov->stco_offset);
+			else {
+			   avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
+			}
+		}
     }
     return updateSize(pb, pos);
 }
@@ -1379,7 +1385,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_zero(pb, 4); // vatt
     avio_zero(pb, 2); // sysid
     avio_zero(pb, 10); // reserved
-
+#ifdef WITHOUT
     // undefined fields
     avio_wb32(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
@@ -1394,7 +1400,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0x00001200);
     avio_w8(pb, '<');
     avio_put_str(pb, inputFilename);
-
+#endif
     return updateSize(pb, pos);
 }
 /**
