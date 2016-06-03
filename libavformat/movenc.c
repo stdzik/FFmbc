@@ -52,7 +52,11 @@
 #ifdef MDEBUG
 const int CLIP_SIZE = 0x40000 * 0xA;
 const int CHUNK_SIZE = 0x40000;
+#if __GNUC__ 
+const int CHUNK_COUNT = 0xA; // CLIP_SIZE/CHUNK_SIZE;
+#else
 const int CHUNK_COUNT = CLIP_SIZE/CHUNK_SIZE;
+#endif
 // Sets alis tag
 static void avio_zero(AVIOContext*pb, int count);
 static char* getFilename();
