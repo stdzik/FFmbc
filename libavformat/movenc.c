@@ -1920,7 +1920,9 @@ static int mov_write_udta_sdp(AVIOContext *pb, AVFormatContext *ctx, int index)
 static int mov_write_trak_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *track, AVStream *st)
 {
 	globalFormat = s;
+#ifdef MDEBUG
 	globalFormat->cur_st = st;   // added by SCD for POC.
+#endif
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "trak");

@@ -112,6 +112,7 @@ static const struct {
     { CODEC_ID_NONE }
 };
 
+#define MDEBUG
 static void mxf_write_aes3_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_mpegvideo_desc(AVFormatContext *s, AVStream *st);
 static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st);
@@ -211,7 +212,11 @@ static const uint8_t umid_ul[]              = { 0x06,0x0A,0x2B,0x34,0x01,0x01,0x
 /**
  * complete key for operation pattern, partitions, and primer pack
  */
+#ifdef MDEBUG
+static const uint8_t op1a_ul[]                     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x01,0x0b,0x00 };
+#else
 static const uint8_t op1a_ul[]                     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x01,0x09,0x00 };
+#endif
 static const uint8_t footer_partition_key[]        = { 0x06,0x0E,0x2B,0x34,0x02,0x05,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x04,0x04,0x00 }; // ClosedComplete
 static const uint8_t primer_pack_key[]             = { 0x06,0x0E,0x2B,0x34,0x02,0x05,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x05,0x01,0x00 };
 static const uint8_t index_table_segment_key[]     = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0d,0x01,0x02,0x01,0x01,0x10,0x01,0x00 };
@@ -709,7 +714,7 @@ static void mxf_write_structural_component(AVFormatContext *s, AVStream *st, enu
     int i;
 
     mxf_write_metadata_key(pb, 0x011100);
-    PRINT_KEY(s, "sturctural component key", pb->buf_ptr - 16);
+    PRINT_KEY(s, "structural component key", pb->buf_ptr - 16);
     klv_encode_ber4_length(pb, 108);
 
     // write uid
@@ -976,6 +981,28 @@ static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st)
     mxf_update_klv_size(s->pb, pos);
 }
 
+#ifdef MDEBUG
+/**
+ * Write network locator. It specifies that the video is in an external file.
+ * It contains the following parts:
+ * 		Network Locator UL - specifies that file is external
+ * 		Length - length of URL
+ * 		URL    - location of file specified as URL.
+ * 		byte 8, registry version is set to 0xd, like it's parent. I really have no idea what it should be.
+ * 		Hopefully, it is not checked.
+ */
+static int64_t mxf_write_network_locator(AVFormatContext *s, AVStream *st)
+{
+    AVIOContext *pb = s->pb;
+    uint8_t mxf_networklocation_descriptor_key[] = { 0x06, 0x0E, 0x2B, 0x34, 0x02, 0x53, 0x01, 0x07, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x32, 0x00};
+    int64_t pos = mxf_write_cdci_common(s, st, mxf_networklocation_descriptor_key);
+    mxf_write_local_tag(pb, 2, 0x4001);
+    avio_put_str(pb, st->inputFilename);
+    mxf_update_klv_size(pb, pos);
+    return pos;
+}
+#endif
+
 static void mxf_write_mpegvideo_desc(AVFormatContext *s, AVStream *st)
 {
     AVIOContext *pb = s->pb;
@@ -1009,9 +1036,11 @@ static void mxf_write_mpegvideo_desc(AVFormatContext *s, AVStream *st)
         if (!st->codec->profile)
             profile_and_level |= 0x80; // escape bit
         avio_w8(pb, profile_and_level);
-    }
 
+    }
     mxf_update_klv_size(pb, pos);
+
+    mxf_write_network_locator(s, st);
 }
 
 static int64_t mxf_write_generic_sound_common(AVFormatContext *s, AVStream *st, const UID key)
@@ -1063,6 +1092,7 @@ static void mxf_write_generic_sound_desc(AVFormatContext *s, AVStream *st)
 {
     int64_t pos = mxf_write_generic_sound_common(s, st, mxf_generic_sound_descriptor_key);
     mxf_update_klv_size(s->pb, pos);
+    mxf_write_network_locator(s, st);
 }
 
 static void mxf_write_package(AVFormatContext *s, enum MXFMetadataSetType type)
