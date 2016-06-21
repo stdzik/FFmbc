@@ -1,0 +1,4 @@
+#!/bin/bash
+movtest $1 $2 testmov
+mxftest $1 $2 testmxf
+

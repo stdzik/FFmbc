@@ -1,0 +1,2 @@
+set -x
+~/ffmbcVersions/ffmxf/FFmbc/ffmbc -loglevel error -y -v 3 -i $1 -f s16le -ar 48000 -i $2 -vcodec copy -acodec copy -strict experimental  -qtimecode "11:00:00:00" -f mov $3.mov

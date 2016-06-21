@@ -1,0 +1,2 @@
+set -x
+~/ffmbcVersions/ffmxf/FFmbc/ffmbc -y -v 9 -loglevel debug -i $1 -f s16le -ar 48000 -i $2 -timecode "11:00:00:00" -f mxf $3.mxf
