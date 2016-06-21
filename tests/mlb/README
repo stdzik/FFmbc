@@ -1,0 +1,10 @@
+Tests for MLB additions to ffmbc
+
+To run:
+ffregression videoElementaryStream rawAudioStream
+
+Results are in testmxf.mxf and testmov.mov
+
+Must be visually confirmed in Adobe Premiere.
+
+ 
