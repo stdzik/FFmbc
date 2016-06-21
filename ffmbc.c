@@ -1042,9 +1042,11 @@ static void do_audio_out(AVFormatContext *s,
         double idelta= delta*dec->sample_rate / enc->sample_rate;
         int byte_delta= ((int)idelta)*isize*dec->channels;
 
+#ifndef MDEBUG
         if (verbose > 3)
             av_log(NULL, AV_LOG_INFO, "adelta:%f ost->sync_opts:%"PRId64", ost->sync_ipts:%f, size:%d, stream:#%d.%d\n",
                     delta / enc->sample_rate, ost->sync_opts, get_sync_ipts(ost), size, ist->file_index, ist->st->index);
+#endif
 
         //FIXME resample delay
         if(fabs(delta) > 50){
@@ -1439,9 +1441,11 @@ static void do_video_out(AVFormatContext *s, OutputStream *ost, InputStream *ist
                 ost->sync_opts= lrintf(sync_ipts);
         }else if (vdelta > 0.6)
             nb_frames += lrintf(vdelta);
+#ifndef MDEBUG
         if (verbose>3)
             av_log(NULL, AV_LOG_INFO, "vdelta:%f, ost->sync_opts:%"PRId64", ost->sync_ipts:%f nb_frames:%d\n",
                     vdelta, ost->sync_opts, get_sync_ipts(ost), nb_frames);
+#endif
     } else if (!vsync_method) {
         if (ist->dts_is_reordered_pts && ist->st->codec->has_b_frames > 0)
             sync_ipts -= ist->st->codec->has_b_frames;
@@ -5375,7 +5379,7 @@ static const OptionDef options[] = {
     /* main options */
 #include "cmdutils_common_opts.h"
 #ifdef MDEBUG
-	{"timecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode", "timecode" },
+	{"qtimecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode for quicktime", "qtimecode" },
 #endif
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "fmt" },
     { "i", HAS_ARG, {(void*)opt_input_file}, "input file name", "filename" },
@@ -5572,9 +5576,10 @@ int main(int argc, char **argv)
 
 #ifdef MDEBUG
     for(int i = 0; i < nb_output_files; i++) {
-    	MOVMuxContext* mov = output_files[i]->priv_data;
-    	if(cliTimecode)
+    	if(!strcmp(output_files[i]->oformat->extensions, "mov") && cliTimecode) {
+        	MOVMuxContext* mov = output_files[i]->priv_data;
     		mov->timecode = cliTimecode;
+    	}
     }
     av_log(NULL, AV_LOG_DEBUG, "timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
 #endif
