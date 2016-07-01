@@ -213,7 +213,7 @@ static const uint8_t umid_ul[]              = { 0x06,0x0A,0x2B,0x34,0x01,0x01,0x
  * complete key for operation pattern, partitions, and primer pack
  */
 #ifdef MDEBUG
-static const uint8_t op1a_ul[]                     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x01,0x0b,0x00 };
+static const uint8_t op1b_ul[]                     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x02,0x0f,0x00 };
 #else
 static const uint8_t op1a_ul[]                     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x01,0x0D,0x01,0x02,0x01,0x01,0x01,0x09,0x00 };
 #endif
@@ -231,7 +231,6 @@ static const uint8_t body_partition_key[]          = { 0x06,0x0E,0x2B,0x34,0x02,
  */
 static const uint8_t header_metadata_key[]  = { 0x06,0x0E,0x2B,0x34,0x02,0x53,0x01,0x01,0x0D,0x01,0x01,0x01,0x01 };
 static const uint8_t multiple_desc_ul[]     = { 0x06,0x0E,0x2B,0x34,0x04,0x01,0x01,0x03,0x0D,0x01,0x03,0x01,0x02,0x7F,0x01,0x00 };
-
 /**
  * SMPTE RP210 http://www.smpte-ra.org/mdd/index.html
  */
@@ -255,6 +254,9 @@ static const MXFLocalTagPair mxf_local_tag_batch[] = {
     // Content Storage
     { 0x1901, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x02,0x06,0x01,0x01,0x04,0x05,0x01,0x00,0x00}}, /* Package strong reference batch */
     { 0x1902, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x02,0x06,0x01,0x01,0x04,0x05,0x02,0x00,0x00}}, /* Package strong reference batch */
+    // Locators
+    { 0x4001, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x01,0x01,0x02,0x01,0x01,0x01,0x00,0x00,0x00}}, /* Network Locator */
+    { 0x4101, {0x06,0x0e,0x2b,0x34,0x01,0x01,0x01,0x02,0x01,0x04,0x01,0x02,0x01,0x00,0x00,0x00}}, /* Twxt Locator */
     // Essence Container Data
     { 0x2701, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x02,0x06,0x01,0x01,0x06,0x01,0x00,0x00,0x00}}, /* Linked Package UID */
     { 0x3F07, {0x06,0x0E,0x2B,0x34,0x01,0x01,0x01,0x04,0x01,0x03,0x04,0x04,0x00,0x00,0x00,0x00}}, /* BodySID */
@@ -506,7 +508,12 @@ static void mxf_write_preface(AVFormatContext *s)
 
     // operational pattern
     mxf_write_local_tag(pb, 16, 0x3B09);
+
+#ifdef MDEBUG
+    avio_write(pb, op1b_ul, 16);
+#else
     avio_write(pb, op1a_ul, 16);
+#endif
 
     // write essence_container_refs
     mxf_write_local_tag(pb, 8 + 16 * mxf->essence_container_count, 0x3B0A);
@@ -533,7 +540,11 @@ static void mxf_write_identification(AVFormatContext *s)
     MXFContext *mxf = s->priv_data;
     AVIOContext *pb = s->pb;
     const char *company = "FFmbc";
+#ifdef MDEBUG
+    const char *product = "OP1b Muxer";
+#else
     const char *product = "OP1a Muxer";
+#endif
     const char *version;
     int length;
 
@@ -569,6 +580,7 @@ static void mxf_write_identification(AVFormatContext *s)
 
 static void mxf_write_content_storage(AVFormatContext *s)
 {
+	av_log(s, AV_LOG_DEBUG, "mxf_write_content_storage\n");
     AVIOContext *pb = s->pb;
 
     mxf_write_metadata_key(pb, 0x011800);
@@ -990,14 +1002,26 @@ static void mxf_write_cdci_desc(AVFormatContext *s, AVStream *st)
  * 		URL    - location of file specified as URL.
  * 		byte 8, registry version is set to 0xd, like it's parent. I really have no idea what it should be.
  * 		Hopefully, it is not checked.
+ *
+ * 		Question: Do I need one locator for all locations or one locator with multiple locations?
  */
-static int64_t mxf_write_network_locator(AVFormatContext *s, AVStream *st)
+static int64_t mxf_write_network_locator(AVFormatContext *s)
 {
     AVIOContext *pb = s->pb;
-    uint8_t mxf_networklocation_descriptor_key[] = { 0x06, 0x0E, 0x2B, 0x34, 0x02, 0x53, 0x01, 0x07, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x32, 0x00};
-    int64_t pos = mxf_write_cdci_common(s, st, mxf_networklocation_descriptor_key);
-    mxf_write_local_tag(pb, 2, 0x4001);
-    avio_put_str(pb, st->inputFilename);
+    int streamCnt = s->nb_streams;
+    uint8_t network_location_key[] = { 0x06, 0x0E, 0x2B, 0x34, 0x02, 0x53, 0x01, 0x01, 0x0D, 0x01, 0x01, 0x01, 0x01, 0x01, 0x32, 0x00};
+
+    avio_write(pb, network_location_key, 16);
+    klv_encode_ber4_length(pb, 0);
+    int64_t pos = avio_tell(pb);
+
+    for(int i = 0; i < s->nb_streams; i++) {
+    	AVStream* st = s->streams[i];
+    	int len = strlen(st->inputFilename);
+        mxf_write_local_tag_utf16(pb, 0x4001, st->inputFilename);
+//        avio_write(pb, st->inputFilename, len);
+    }
+
     mxf_update_klv_size(pb, pos);
     return pos;
 }
@@ -1036,11 +1060,8 @@ static void mxf_write_mpegvideo_desc(AVFormatContext *s, AVStream *st)
         if (!st->codec->profile)
             profile_and_level |= 0x80; // escape bit
         avio_w8(pb, profile_and_level);
-
     }
     mxf_update_klv_size(pb, pos);
-
-    mxf_write_network_locator(s, st);
 }
 
 static int64_t mxf_write_generic_sound_common(AVFormatContext *s, AVStream *st, const UID key)
@@ -1092,9 +1113,16 @@ static void mxf_write_generic_sound_desc(AVFormatContext *s, AVStream *st)
 {
     int64_t pos = mxf_write_generic_sound_common(s, st, mxf_generic_sound_descriptor_key);
     mxf_update_klv_size(s->pb, pos);
-    mxf_write_network_locator(s, st);
 }
 
+/**
+ * This is apparently either a Material Package or a Source Package.
+ * Maybe these should be broken up into 2 separate functions, with maybe some
+ * lower level functions in common.
+ *
+ * Modifying to include NetworkLocator, this should be inserted before the Essence Descriptors.
+ *
+ */
 static void mxf_write_package(AVFormatContext *s, enum MXFMetadataSetType type)
 {
     MXFContext *mxf = s->priv_data;
@@ -1153,6 +1181,13 @@ static void mxf_write_package(AVFormatContext *s, enum MXFMetadataSetType type)
     mxf_write_sequence(s, mxf->timecode_track, type);
     mxf_write_timecode_component(s, mxf->timecode_track, type);
 
+#ifdef MDEBUG
+    /**
+     * Not sure if this is the right place, or if there should not be a separate locator for each input file.
+     */
+    if(type == SourcePackage)
+        	mxf_write_network_locator(s);
+#endif
     for (i = 0; i < s->nb_streams; i++) {
         AVStream *st = s->streams[i];
         mxf_write_track(s, st, type);
@@ -1180,7 +1215,11 @@ static int mxf_write_essence_container_data(AVFormatContext *s)
     mxf_write_umid(s, 1);
 
     mxf_write_local_tag(pb, 4, 0x3F07); // BodySID
+#ifdef MDEBUG
     avio_wb32(pb, 1);
+#else
+    avio_wb32(pb, 1);
+#endif
 
     mxf_write_local_tag(pb, 4, 0x3F06); // IndexSID
     avio_wb32(pb, 2);
@@ -1190,12 +1229,14 @@ static int mxf_write_essence_container_data(AVFormatContext *s)
 
 static int mxf_write_header_metadata_sets(AVFormatContext *s)
 {
+	av_log(s, AV_LOG_DEBUG, "mxf_write_header_metadata_sets\n");
     mxf_write_preface(s);
     mxf_write_identification(s);
     mxf_write_content_storage(s);
     mxf_write_package(s, MaterialPackage);
     mxf_write_package(s, SourcePackage);
     mxf_write_essence_container_data(s);
+	av_log(s, AV_LOG_DEBUG, "mxf_write_header_metadata_sets exit\n");
     return 0;
 }
 
@@ -1367,16 +1408,26 @@ static void mxf_write_klv_fill(AVFormatContext *s)
     }
 }
 
+static void logkey(AVFormatContext *s, const uint8_t* key) {
+	char keystr[33];
+	snprintf(keystr , 33, "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
+			key[0], key[1], key[2], key[3], key[4], key[5], key[6], key[7],
+			key[8], key[9], key[10], key[11], key[12], key[13], key[14], key[15]
+			);
+	av_log(s, AV_LOG_INFO, "key = %s\n", keystr);
+}
+
 static void mxf_write_partition(AVFormatContext *s, int bodysid,
                                 int indexsid,
                                 const uint8_t *key, int write_metadata)
 {
     MXFContext *mxf = s->priv_data;
+	av_log(s, AV_LOG_DEBUG, "mxf_write_partition enter %d\n",
+			mxf->body_partitions_count);
     AVIOContext *pb = s->pb;
     int64_t header_byte_count_offset;
     unsigned index_byte_count = 0;
     uint64_t partition_offset = avio_tell(pb);
-
     if (!mxf->edit_unit_byte_count && mxf->edit_units_count)
         index_byte_count = 85 + 12+(s->nb_streams+1)*6 + 12+mxf->edit_units_count*15;
     else if (mxf->edit_unit_byte_count && indexsid)
@@ -1398,7 +1449,9 @@ static void mxf_write_partition(AVFormatContext *s, int bodysid,
 
     // write klv
     avio_write(pb, key, 16);
+    logkey(s, key);
     klv_encode_ber4_length(pb, 88 + 16 * mxf->essence_container_count);
+
 
     // write partition value
     avio_wb16(pb, 1); // majorVersion
@@ -1433,7 +1486,11 @@ static void mxf_write_partition(AVFormatContext *s, int bodysid,
     avio_wb32(pb, bodysid); // bodySID
 
     // operational pattern
+#ifdef MDEBUG
+    avio_write(pb, op1b_ul, 16);
+#else
     avio_write(pb, op1a_ul, 16);
+#endif
 
     // essence container
     mxf_write_essence_container_refs(s);
@@ -1457,6 +1514,7 @@ static void mxf_write_partition(AVFormatContext *s, int bodysid,
     }
 
     avio_flush(pb);
+	av_log(s, AV_LOG_DEBUG, "mxf_write_partition exit\n");
 }
 
 static const UID mxf_mpeg2_codec_uls[] = {
@@ -2242,6 +2300,9 @@ static int mxf_write_packet(AVFormatContext *s, AVPacket *pkt)
     AVStream *st = s->streams[pkt->stream_index];
     MXFStreamContext *sc = st->priv_data;
     MXFIndexEntry ie = {0};
+#ifdef MDEBUG
+    int bodysid = 0;
+#endif
 
     if (st->codec->codec_id == CODEC_ID_MPEG2VIDEO) {
         if (!mxf_parse_mpeg2_frame(s, st, pkt, &ie)) {
@@ -2279,9 +2340,14 @@ static int mxf_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     if (!mxf->header_written) {
         if (mxf->edit_unit_byte_count) {
+#ifdef MDEBUG
+        	bodysid = 0;
+            mxf_write_partition(s, bodysid, 2, header_open_partition_key, 1);
+#else
             mxf_write_partition(s, 1, 2, header_open_partition_key, 1);
             mxf_write_klv_fill(s);
             mxf_write_index_table_segment(s);
+#endif
         } else {
             mxf_write_partition(s, 0, 0, header_open_partition_key, 1);
         }
@@ -2293,10 +2359,14 @@ static int mxf_write_packet(AVFormatContext *s, AVPacket *pkt)
             (!mxf->edit_units_count || mxf->edit_units_count > EDIT_UNITS_PER_BODY) &&
             !(ie.flags & 0x33)) { // I frame, Gop start
             mxf_write_klv_fill(s);
+#ifndef MDEBUG
+            bodysid = 0;
+            mxf_write_partition(s, bodysid, 2, body_partition_key, 0);
+#else
             mxf_write_partition(s, 1, 2, body_partition_key, 0);
-
             mxf_write_klv_fill(s);
             mxf_write_index_table_segment(s);
+#endif
         }
 
         mxf_write_klv_fill(s);
@@ -2343,13 +2413,21 @@ static void mxf_write_random_index_pack(AVFormatContext *s)
     klv_encode_ber4_length(pb, 28 + 12*mxf->body_partitions_count);
 
     if (mxf->edit_unit_byte_count)
+#ifdef MDEBUG
         avio_wb32(pb, 1); // BodySID of header partition
+#else
+    avio_wb32(pb, 1); // BodySID of header partition
+#endif
     else
-        avio_wb32(pb, 0);
+        avio_wb32(pb, 1);
     avio_wb64(pb, 0); // offset of header partition
 
     for (i = 0; i < mxf->body_partitions_count; i++) {
-        avio_wb32(pb, 1); // BodySID
+#ifdef MDEBUG
+        avio_wb32(pb, 1); // BodySID of header partition
+#else
+    avio_wb32(pb, 1); // BodySID of header partition
+#endif
         avio_wb64(pb, mxf->body_partition_offset[i]);
     }
 
@@ -2383,9 +2461,13 @@ static int mxf_write_footer(AVFormatContext *s)
     if (s->pb->seekable) {
         avio_seek(pb, 0, SEEK_SET);
         if (mxf->edit_unit_byte_count) {
+#ifdef MDEBUG
+            mxf_write_partition(s, 0, 2, header_closed_partition_key, 1);
+#else
             mxf_write_partition(s, 1, 2, header_closed_partition_key, 1);
             mxf_write_klv_fill(s);
             mxf_write_index_table_segment(s);
+#endif
         } else {
             mxf_write_partition(s, 0, 0, header_closed_partition_key, 1);
         }
@@ -2458,7 +2540,7 @@ static int mxf_interleave_get_packet(AVFormatContext *s, AVPacket *out, AVPacket
             goto out;
 
         *out = pktl->pkt;
-        //av_log(s, AV_LOG_DEBUG, "out st:%d dts:%lld\n", (*out).stream_index, (*out).dts);
+        av_log(s, AV_LOG_DEBUG, "mxf_interleave_get_packet %d out st:%d dts:%lld\n", out->size, (*out).stream_index, (*out).dts);
         s->packet_buffer = pktl->next;
         if (s->streams[pktl->pkt.stream_index]->last_in_packet_buffer == pktl)
             s->streams[pktl->pkt.stream_index]->last_in_packet_buffer = NULL;
