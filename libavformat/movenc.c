@@ -169,6 +169,9 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 		}
 #endif
 		avio_wb32(pb, 0); /* version & flags */
+#ifdef MDEBUG
+		avio_wb32(pb, 0); /* no entries */
+#else
 		avio_wb32(pb, track->chunkCount); /* entry count */
 		for (i=0; i<track->entry; i++) {
 			if(!track->cluster[i].chunkNum)
@@ -179,6 +182,7 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 			   avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
 			}
 		}
+#endif
     }
     return updateSize(pb, pos);
 }
@@ -196,6 +200,7 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
     avio_wtag(pb, "stsz");
     avio_wb32(pb, 0); /* version & flags */
 
+#ifndef MDEBUG
     for (i=0; i<track->entry; i++) {
         tst = track->cluster[i].size/track->cluster[i].entries;
         if(oldtst != -1 && tst != oldtst) {
@@ -204,6 +209,7 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
         oldtst = tst;
         entries += track->cluster[i].entries;
     }
+#endif
     if (equalChunks) {
         int sSize = track->cluster[0].size/track->cluster[0].entries;
         sSize = FFMAX(1, sSize); // adpcm mono case could make sSize == 0
@@ -425,8 +431,10 @@ static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
     else
         avio_w8(pb, 0x11); // flags (= Visualstream)
 
+#ifndef MDEBUG
     avio_w8(pb,  track->enc->rc_buffer_size>>(3+16));      // Buffersize DB (24 bits)
     avio_wb16(pb, (track->enc->rc_buffer_size>>3)&0xFFFF); // Buffersize DB
+#endif
 
     avg_bitrate = compute_avg_bitrate(track);
     // maxbitrate (FIXME should be max rate in any 1 sec window)
@@ -1475,11 +1483,16 @@ static int mov_write_dref_tag(AVIOContext *pb)
 
 static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *track)
 {
+	av_log(s, AV_LOG_DEBUG, "mov_write_stbl_tag\n");
+#ifdef MDEBUG
+	track->flags = 0;
+#endif
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "stbl");
     mov_write_stsd_tag(s, pb, track);
     mov_write_stts_tag(pb, track);
+#ifndef MDEBUG
     if ((track->enc->codec_type == AVMEDIA_TYPE_VIDEO ||
          track->enc->codec_tag == MKTAG('r','t','p',' ')) &&
         track->hasKeyframes && track->hasKeyframes < track->entry) {
@@ -1487,6 +1500,7 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
                            MOV_SYNC_SAMPLE :
                            MOV_SYNC_SAMPLE | MOV_PARTIAL_SYNC_SAMPLE);
     }
+#endif
     if (track->mode == MODE_MOV && track->flags & MOV_TRACK_STPS)
         mov_write_stss_tag(pb, track, MOV_PARTIAL_SYNC_SAMPLE);
     if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO &&
