@@ -130,7 +130,7 @@ static const OptionDef options[];
 #define MAX_STREAMS 1024    /* arbitrary sanity check value */
 static const char *last_asked_format = NULL;
 #ifdef MDEBUG
-static const char *cliTimecode = NULL;
+static char *cliTimecode = NULL;
 #endif
 static double *ts_scale;
 static int  nb_ts_scale;
@@ -2608,7 +2608,7 @@ static int transcode(AVFormatContext **output_files,
     if (!audio_mapped_streams)
         goto fail;
 
-    av_log(NULL, AV_LOG_DEBUG, "nb streams %d audio mapped streams %d\n", nb_ostreams, audio_mapped_streams);
+    av_log(NULL, AV_LOG_DEBUG, "nb streams %d audio mapped streams %d\n", nb_ostreams, *audio_mapped_streams);
 
     /* Sanity check audio channel mapping */
     for (i = 0; i < nb_audio_channel_maps; i++) {
@@ -3344,7 +3344,7 @@ static int transcode(AVFormatContext **output_files,
     term_init();
 
     timer_start = av_gettime();
-
+#ifdef NOTNOW
     for(; received_sigterm == 0;) {
         int file_index, ist_index;
         AVPacket pkt;
@@ -3549,6 +3549,10 @@ static int transcode(AVFormatContext **output_files,
         /* dump report by using the output first video and audio streams */
         print_report(output_files, ost_table, nb_ostreams, 0, duration);
     }
+#endif
+
+    MOVMuxContext *mov = os->priv_data;
+    av_log(os,AV_LOG_DEBUG, "mov trackCount %d\n", mov->nb_streams);
 
     /* at the end of stream, we must flush the decoder buffers */
     for (i = 0; i < nb_input_streams; i++) {
@@ -3557,7 +3561,6 @@ static int transcode(AVFormatContext **output_files,
             output_packet(ist, i, ost_table, nb_ostreams, NULL);
         }
     }
-
     /* write the trailer if needed and close file */
     for(i=0;i<nb_output_files;i++) {
         os = output_files[i];
@@ -4865,6 +4868,7 @@ static int opt_output_file(const char *opt, const char *filename)
         }
 
         /* open the file */
+        av_log(NULL, AV_LOG_DEBUG, "opt_output_file\n");
         if ((err = avio_open(&oc->pb, filename, AVIO_FLAG_WRITE)) < 0) {
             print_error(filename, err);
             ffmpeg_exit(1);
@@ -5379,7 +5383,7 @@ static const OptionDef options[] = {
     /* main options */
 #include "cmdutils_common_opts.h"
 #ifdef MDEBUG
-	{"qtimecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode for quicktime", "qtimecode" },
+	{"timecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode for quicktime", "qtimecode" },
 #endif
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "fmt" },
     { "i", HAS_ARG, {(void*)opt_input_file}, "input file name", "filename" },
