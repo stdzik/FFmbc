@@ -49,6 +49,7 @@ int ffio_init_context(AVIOContext *s,
                   int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
                   int64_t (*seek)(void *opaque, int64_t offset, int whence))
 {
+	av_log(s, AV_LOG_DEBUG, "ffio_init_context\n");
     s->buffer = buffer;
     s->buffer_size = buffer_size;
     s->buf_ptr = buffer;
@@ -115,6 +116,7 @@ AVIOContext *avio_alloc_context(
     AVIOContext *s = av_mallocz(sizeof(AVIOContext));
     if (!s)
         return NULL;
+
     ffio_init_context(s, buffer, buffer_size, write_flag, opaque,
                   read_packet, write_packet, seek);
     return s;
@@ -641,7 +643,7 @@ int url_fgetc(AVIOContext *s)
 int avio_read(AVIOContext *s, unsigned char *buf, int size)
 {
     int len, size1;
-
+    av_log(NULL, AV_LOG_DEBUG, "avio_read\n");
     size1 = size;
     while (size > 0) {
         len = s->buf_end - s->buf_ptr;
@@ -950,7 +952,6 @@ int avio_open(AVIOContext **s, const char *filename, int flags)
 {
     URLContext *h;
     int err;
-
     err = ffurl_open(&h, filename, flags);
     if (err < 0)
         return err;

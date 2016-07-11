@@ -729,9 +729,12 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         av_init_packet(pkt);
         ret= s->iformat->read_packet(s, pkt);
+        av_log(s, AV_LOG_DEBUG, "after read_packet loop %d\n", ret);
         if (ret < 0) {
-            if (!pktl || ret == AVERROR(EAGAIN))
-                return ret;
+            if (!pktl || ret == AVERROR(EAGAIN)) {
+                av_log(s, AV_LOG_DEBUG, "av_read_packet exit %d\n", ret);
+               return ret;
+            }
             for (i = 0; i < s->nb_streams; i++)
                 if(s->streams[i]->request_probe > 0)
                     s->streams[i]->request_probe = -1;
@@ -754,8 +757,9 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
             break;
         }
 
-        if(!pktl && st->request_probe <= 0)
+        if(!pktl && st->request_probe <= 0) {
             return ret;
+        }
 
         add_to_pktbuf(&s->raw_packet_buffer, pkt, &s->raw_packet_buffer_end);
         s->raw_packet_buffer_remaining_size -= pkt->size;
@@ -763,7 +767,6 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
         if(st->request_probe>0){
             AVProbeData *pd = &st->probe_data;
             int end;
-            av_log(s, AV_LOG_DEBUG, "probing stream %d pp:%d\n", st->index, st->probe_packets);
             --st->probe_packets;
 
             pd->buf = av_realloc(pd->buf, pd->buf_size+pkt->size+AVPROBE_PADDING_SIZE);
@@ -1052,7 +1055,6 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
     int len, ret, i;
 
     av_init_packet(pkt);
-
     for(;;) {
         /* select current input stream component */
         st = s->cur_st;
@@ -1121,7 +1123,7 @@ static int read_frame_internal(AVFormatContext *s, AVPacket *pkt)
             AVPacket cur_pkt;
             /* read next packet */
             ret = av_read_packet(s, &cur_pkt);
-            if (ret < 0) {
+           if (ret < 0) {
                 if (ret == AVERROR(EAGAIN))
                     return ret;
                 /* return the last frames, if any */
@@ -1197,7 +1199,7 @@ int av_read_frame(AVFormatContext *s, AVPacket *pkt)
     AVPacketList *pktl;
     int eof=0;
     const int genpts= s->flags & AVFMT_FLAG_GENPTS;
-
+    av_log(s, AV_LOG_DEBUG, "av_read_frame enter\n");
     for(;;){
         pktl = s->packet_buffer;
         if (pktl) {
@@ -1245,6 +1247,7 @@ int av_read_frame(AVFormatContext *s, AVPacket *pkt)
                            pkt->flags);
                 s->packet_buffer = pktl->next;
                 av_free(pktl);
+                av_log(s, AV_LOG_DEBUG, "av_read_frame 0 exit\n");
                 return 0;
             }
         }
@@ -1254,8 +1257,10 @@ int av_read_frame(AVFormatContext *s, AVPacket *pkt)
                 if(pktl && ret != AVERROR(EAGAIN)){
                     eof=1;
                     continue;
-                }else
+                }else {
+                    av_log(s, AV_LOG_DEBUG, "av_read_frame error exit\n");
                     return ret;
+                }
             }
 
             if(av_dup_packet(add_to_pktbuf(&s->packet_buffer, pkt,

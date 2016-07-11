@@ -1369,7 +1369,7 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 #else
     	entries = 1;
         stts_entries = av_malloc(entries*sizeof(MOVStts)); /* worst case */
-    	stts_entries[0].count = 0; // Why does this work?
+    	stts_entries[0].count = track->entry;
     	stts_entries[0].duration = FRAMETIME;
         av_log(NULL, AV_LOG_DEBUG, "video branch count %d duration %d\n",
         		stts_entries[0].count, stts_entries[0].duration);

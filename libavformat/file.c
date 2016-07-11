@@ -31,7 +31,6 @@
 #include "os_support.h"
 #include "url.h"
 
-
 /* standard file protocol */
 
 static int file_read(URLContext *h, unsigned char *buf, int size)
@@ -43,6 +42,7 @@ static int file_read(URLContext *h, unsigned char *buf, int size)
 static int file_write(URLContext *h, const unsigned char *buf, int size)
 {
     int fd = (intptr_t) h->priv_data;
+
     return write(fd, buf, size);
 }
 
