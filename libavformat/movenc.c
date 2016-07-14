@@ -54,8 +54,8 @@
 #define MDEBUG
 
 #ifdef MDEBUG
+const int CHUNK_SIZE = 0x40000; // 2048; // original value
 const int CLIP_SIZE = 0x40000 * 0xA;
-const int CHUNK_SIZE = 2048;
 const int FRAMETIME = 1001;
 #if __GNUC__ 
 const int CHUNK_COUNT = 0xA; // CLIP_SIZE/CHUNK_SIZE;
