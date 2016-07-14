@@ -429,7 +429,8 @@ static void putDescr(AVIOContext *pb, int tag, unsigned int size)
 
 static unsigned compute_avg_bitrate(MOVTrack *track)
 {
-    uint64_t size = 0;
+    av_log(NULL, AV_LOG_DEBUG, "compute_avg_bitrate track timescale %d duration %d\n", track->timescale, track->total_duration);
+   uint64_t size = 0;
     int i;
     for (i = 0; i < track->entry; i++)
         size += track->cluster[i].size;
@@ -473,7 +474,6 @@ static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
     avio_w8(pb,  track->enc->rc_buffer_size>>(3+16));      // Buffersize DB (24 bits)
     avio_wb16(pb, (track->enc->rc_buffer_size>>3)&0xFFFF); // Buffersize DB
 #endif
-
     avg_bitrate = compute_avg_bitrate(track);
     // maxbitrate (FIXME should be max rate in any 1 sec window)
     avio_wb32(pb, FFMAX3(track->enc->bit_rate, track->enc->rc_max_rate, avg_bitrate));
@@ -871,20 +871,20 @@ static int mov_get_rawvideo_codec_tag(AVFormatContext *s, MOVTrack *track)
 static int mov_get_codec_tag(AVFormatContext *s, MOVTrack *track)
 {
     int tag = track->enc->codec_tag;
-
     if (!tag || (track->enc->strict_std_compliance >= FF_COMPLIANCE_NORMAL &&
                  (track->enc->codec_id == CODEC_ID_DVVIDEO ||
                   track->enc->codec_id == CODEC_ID_RAWVIDEO ||
                   track->enc->codec_id == CODEC_ID_H263 ||
                   av_get_bits_per_sample(track->enc->codec_id)))) { // pcm audio
+        av_log(s, AV_LOG_DEBUG, "mov_get_codec_tag AS IF!!!\n");
         if (track->enc->codec_id == CODEC_ID_DVVIDEO)
             tag = mov_get_dv_codec_tag(s, track);
         else if (track->enc->codec_id == CODEC_ID_RAWVIDEO)
             tag = mov_get_rawvideo_codec_tag(s, track);
         else if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
+        	av_log(s, AV_LOG_DEBUG, "mov_get_codec_tag %d\n", track->enc->codec_id);
             tag = ff_codec_get_tag(codec_movvideo_tags, track->enc->codec_id);
             if (!tag) { // if no mac fcc found, try with Microsoft tags
-                tag = ff_codec_get_tag(ff_codec_bmp_tags, track->enc->codec_id);
                 if (tag)
                     av_log(s, AV_LOG_INFO, "Warning, using MS style video codec tag, "
                            "the file may be unplayable!\n");
@@ -928,7 +928,6 @@ static const AVCodecTag codec_f4v_tags[] = {
 static int mov_find_codec_tag(AVFormatContext *s, MOVTrack *track)
 {
     int tag = track->enc->codec_tag;
-
     if (track->mode == MODE_MP4 || track->mode == MODE_PSP)
         tag = mp4_get_codec_tag(s, track);
     else if (track->mode == MODE_IPOD)
@@ -1517,11 +1516,18 @@ static int getVFrameCount(AVStream* st)
 	 * Get directory from inputFileName
 	 */
 	int duration;
-	char* inputFile = st->inputFilename;
-	char* inputDir = strrchr(inputFile, '/');
-	if(!inputDir)
-		inputDir = ".";
-	DIR* dp = opendir(inputDir);
+	char inputDir[100];
+	char* inputPath = st->inputFilename;
+	av_log(NULL, AV_LOG_DEBUG, "input file %s\n", st->inputFilename);
+	char *dirEnd = strrchr(inputPath, '/') + 1;
+	av_log(NULL, AV_LOG_DEBUG, "input dir %s\n", dirEnd);
+	if(dirEnd)
+		av_strlcpy(inputDir, inputPath, dirEnd - inputPath + 1);
+	else
+		strcpy(inputDir, ".");
+	// DIR* dp;
+	DIR *dp = opendir(inputDir);
+	av_log(NULL, AV_LOG_DEBUG, "inputDir %s\n", inputDir);
 	struct dirent* direntry = readdir(dp);
 	while (direntry != NULL) {
 		if(strstr(direntry->d_name, ".xml"))
@@ -1535,21 +1541,23 @@ static int getVFrameCount(AVStream* st)
 		}
 	}
 	char *xmlFile = direntry->d_name;
-	av_log(NULL, AV_LOG_DEBUG, "This sucks %s\n", xmlFile);
+	av_log(NULL, AV_LOG_DEBUG, "xmlFile %s\n", xmlFile);
 	/**
 	 * Find video length
 	 */
-	ezxml_t asset = ezxml_parse_file(xmlFile);
+	av_strlcat(inputDir, xmlFile, 100);
+	av_log(NULL, AV_LOG_DEBUG, "xmlPath %s\n", inputDir);
+	ezxml_t asset = ezxml_parse_file(inputDir);
 	for(ezxml_t track = ezxml_child(asset, "Track"); track; track = track->next) {
 		char *attribute = ezxml_attr(track, "xsi:type");
+		av_log(NULL, AV_LOG_DEBUG, "attribute %s\n", attribute);
 		if(!strcmp(attribute, "VideoTrack")){
 			ezxml_t segment = ezxml_child(track, "Segment");
 			char* durationStr = ezxml_attr(segment, "Duration");
 			char* bitRateStr = ezxml_attr(ezxml_child(segment, "HiResFormat"), "BitRate");
-			av_log(NULL, AV_LOG_DEBUG, "duration %s bitRate %s\n", durationStr, bitRateStr);
 			duration = atoi(durationStr);
 			int bitRate = atoi(bitRateStr);
-			av_log(NULL, AV_LOG_DEBUG, "duraiton %d bitRate %d\n", duration, bitRate);
+			av_log(NULL, AV_LOG_DEBUG, "duration %d bitRate %d\n", duration, bitRate);
 		}
 	}
 	return duration;
@@ -1562,8 +1570,8 @@ static void setCurrentStream(AVStream *st)
 
 static void setupTrackInfo(AVFormatContext *s)
 {
+	av_log(s, AV_LOG_DEBUG, "setupTrackInfo enter\n");
 	formatObj = s;
-	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s enter\n", s->filename);
 	MOVMuxContext* mov = formatObj->priv_data;
 	for(int i = 0; i < mov->nb_streams; i++)
 	{
@@ -1571,16 +1579,16 @@ static void setupTrackInfo(AVFormatContext *s)
         AVStream* stream = formatObj->streams[i];
 		track->trackID = i + 1;
 		track->time = mov->time;
+		av_log(s, AV_LOG_DEBUG, "setupTrackInfo codec type %d\n",track->enc->codec_type);
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
         {
         	track->entry = getVFrameCount(stream);
         	track->total_duration = track->entry*1001;
+    		av_log(s, AV_LOG_DEBUG, "setupTrackInfo video branch duraiton %d entry %d\n", track->total_duration, track->entry);
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
         	track->entry = getFileSize(stream->inputFilename)/CHUNK_SIZE;
         	track->total_duration = getFileSize(stream->inputFilename)/2;
         }
-        av_log(s, AV_LOG_DEBUG, "setTrackInfo track %d entry %d total_duration %d\n",
-        		i, track->entry, track->total_duration);
 	}
 	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s exit \n", s->filename);
 }
@@ -1983,6 +1991,8 @@ static int mov_write_tapt_tag(AVIOContext *pb, MOVTrack *track)
 // This box seems important for the psp playback ... without it the movie seems to hang
 static int mov_write_edts_tag(AVIOContext *pb, MOVTrack *track)
 {
+	   av_log(formatObj, AV_LOG_DEBUG, "mov_write_edts_tag pts_offset %ld timescale %d\n",
+	    		track->pts_offset, track->timescale);
     int64_t pts_offset = av_rescale_rnd(track->pts_offset, MOV_TIMESCALE,
                                         track->timescale, AV_ROUND_DOWN);
     int64_t edit_duration = av_rescale_rnd(track->edit_duration, MOV_TIMESCALE,
@@ -2002,7 +2012,7 @@ static int mov_write_edts_tag(AVIOContext *pb, MOVTrack *track)
     avio_w8(pb, version);
     avio_wb24(pb, 0); /* flags */
     avio_wb32(pb, entry_count);
-
+    av_log(formatObj, AV_LOG_DEBUG, "mov_write_edts_tag entry_count: %d %ld\n", entry_count, track->pts_offset);
     if (track->pts_offset > 0) { /* add an empty edit to delay presentation */
         if (version == 1) {
             avio_wb64(pb, pts_offset);
@@ -2556,6 +2566,10 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
                 break;
             first_pts = FFMIN(pts, first_pts);
         }
+#else
+    	track->pts_offset = 0;
+    	first_pts = 0;
+    	first_dec_pts = 0;
 #endif
         if (first_pts > 0) {
             track->pts_offset = first_pts;
@@ -2664,7 +2678,6 @@ static int mov_write_free_tag(AVIOContext *pb, MOVMuxContext *mov, unsigned size
 
 static int mov_write_mdat_tag(AVIOContext *pb, MOVMuxContext *mov)
 {
-	av_log(formatObj, AV_LOG_DEBUG, "\nMDAT MDAT MDAT\n");
     mov->mdat_pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size placeholder*/
     avio_wtag(pb, "mdat");
@@ -3050,7 +3063,7 @@ static int mov_write_header(AVFormatContext *s)
     MOVMuxContext *mov = s->priv_data;
     AVDictionaryEntry *t;
     int i, hint_track = 0;
-
+    av_log(s, AV_LOG_DEBUG, "mov_write_header %s\n", (char*)&s->streams[0]->codec->codec_tag);
     if (!s->pb->seekable) {
         av_log(s, AV_LOG_ERROR, "muxer does not support non seekable output\n");
         return -1;
@@ -3103,7 +3116,6 @@ static int mov_write_header(AVFormatContext *s)
             }
         }
     }
-
     mov->tracks = av_mallocz(mov->nb_streams*sizeof(*mov->tracks));
     if (!mov->tracks)
         return AVERROR(ENOMEM);
@@ -3117,6 +3129,7 @@ static int mov_write_header(AVFormatContext *s)
         track->enc = st->codec;
         track->language = ff_mov_iso639_to_lang(language, !(mov->mode & (MODE_MOV|MODE_IPOD)));
         track->mode = mov->mode;
+        av_log(s, AV_LOG_DEBUG, "track->tag before %x mode %d\n", track->enc->codec_tag, track->mode);
         track->tag = mov_find_codec_tag(s, track);
         if (!track->tag) {
             av_log(s, AV_LOG_ERROR, "track %d: could not find tag, "
@@ -3350,8 +3363,9 @@ static int mov_overwrite_file(AVFormatContext *s)
 
 static int mov_write_trailer(AVFormatContext *s)
 {
-	av_log(s, AV_LOG_INFO, "mov_write_trailer enter\n");
+	av_log(s, AV_LOG_INFO, "mov_write_trailer  enter\n");
 	setupTrackInfo(s);
+	av_log(s, AV_LOG_DEBUG, "after setup\n");
     MOVMuxContext *mov = s->priv_data;
     AVIOContext *pb = s->pb;
     int res = 0;

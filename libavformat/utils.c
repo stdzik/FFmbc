@@ -2912,7 +2912,7 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
 
     for(i=0;i<s->nb_streams;i++) {
         st = s->streams[i];
-
+        av_log(s, AV_LOG_DEBUG, "avformat_write_header %d\n", st->codec->codec_id);
         switch (st->codec->codec_type) {
         case AVMEDIA_TYPE_AUDIO:
             if(st->codec->sample_rate<=0){
