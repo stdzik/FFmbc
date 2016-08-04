@@ -385,7 +385,7 @@ static void putDescr(AVIOContext *pb, int tag, unsigned int size)
 static unsigned compute_avg_bitrate(MOVTrack *track)
 {
     av_log(NULL, AV_LOG_DEBUG, "compute_avg_bitrate track timescale %d duration %d\n", track->timescale, track->total_duration);
-   uint64_t size = 0;
+    uint64_t size = 0;
     int i;
     for (i = 0; i < track->entry; i++)
         size += track->cluster[i].size;
@@ -394,6 +394,7 @@ static unsigned compute_avg_bitrate(MOVTrack *track)
 
 static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
 {
+	av_log(formatObj, AV_LOG_DEBUG, "mov_write_esds_tag enter\n");
     int64_t pos = avio_tell(pb);
     int decoderSpecificInfoLen = track->vosLen ? 5+track->vosLen : 0;
     unsigned avg_bitrate;
@@ -443,6 +444,7 @@ static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
     // SL descriptor
     putDescr(pb, 0x06, 1);
     avio_w8(pb, 0x02);
+	av_log(formatObj, AV_LOG_DEBUG, "mov_write_esds_tag exit\n");
     return updateSize(pb, pos);
 }
 
@@ -1400,6 +1402,23 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_zero(pb, 4); // vatt
     avio_zero(pb, 2); // sysid
     avio_zero(pb, 10); // reserved
+
+    // added for Premiere 10.3 compatibility
+    // undefined fields
+    avio_wb32(pb, strlen(parentDir));
+    avio_put_str(pb, parentDir);
+    avio_w8(pb, 0);
+    avio_w8(pb, 2);
+    avio_w8(pb, 0);
+    avio_w8(pb, '=');
+
+    // put in path with '/' replaced by ':'
+    avio_wb32(pb, strlen(inputFilename));
+    avio_put_str(pb, replacechar(inputFilename, '/', ':'));
+    avio_wb32(pb, 0x00001200);
+    avio_w8(pb, '<');
+    avio_put_str(pb, inputFilename);
+
     return updateSize(pb, pos);
 }
 /**
@@ -1463,6 +1482,7 @@ static int getVFrameCount(AVStream* st)
 	DIR *dp = opendir(inputDir);
 	struct dirent* direntry = readdir(dp);
 	while (direntry != NULL) {
+		av_log(NULL, AV_LOG_DEBUG, "d_name %s\n", direntry->d_name);
 		if(strstr(direntry->d_name, ".xml"))
 		{
 			break;
@@ -1472,6 +1492,10 @@ static int getVFrameCount(AVStream* st)
 			direntry = readdir(dp);
 			continue;
 		}
+	}
+	if(direntry == NULL) {
+		av_log(NULL, AV_LOG_DEBUG, "Error: No xml file found...exiting\n");
+		return AVERROR(-1);
 	}
 	char *xmlFile = direntry->d_name;
 	av_log(NULL, AV_LOG_DEBUG, "xmlFile %s\n", xmlFile);

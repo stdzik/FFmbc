@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <unistd.h>
+#include <execinfo.h>
 #include "libavformat/avformat.h"
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
@@ -130,7 +131,7 @@ static const OptionDef options[];
 #define MAX_STREAMS 1024    /* arbitrary sanity check value */
 static const char *last_asked_format = NULL;
 #ifdef MDEBUG
-static char *cliTimecode = NULL;
+static char *cliTimecode = "00:00:00:00"; // initialize to
 #endif
 static double *ts_scale;
 static int  nb_ts_scale;
@@ -394,6 +395,23 @@ static InputStream *input_streams = NULL;
 static int         nb_input_streams = 0;
 static InputFile   *input_files   = NULL;
 static int         nb_input_files   = 0;
+
+#ifdef MDEBUG
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  if(sig == 11)
+	  fprintf(stderr, "Error: Segmentation Error\n");
+
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
+#endif
 
 #if CONFIG_AVFILTER
 
@@ -3346,8 +3364,10 @@ static int transcode(AVFormatContext **output_files,
 
     timer_start = av_gettime();
 
-
-#ifdef NOTNOW
+/**
+ * scanning input media. DO NOT SCAN when creating linked mov files.
+ */
+#ifndef MDEBUG
     for(; received_sigterm == 0;) {
         int file_index, ist_index;
         AVPacket pkt;
