@@ -142,6 +142,16 @@ static int64_t updateSize(AVIOContext *pb, int64_t pos)
     return curpos - pos;
 }
 
+static int64_t updateSize16(AVIOContext *pb, int64_t pos)
+{
+    int64_t curpos = avio_tell(pb);
+    avio_seek(pb, pos, SEEK_SET);
+    avio_wb16(pb, curpos - pos); /* rewrite size */
+    avio_seek(pb, curpos, SEEK_SET);
+
+    return curpos - pos;
+}
+
 /**
  * Chunk offset atom
  * Gave up on trying to put all changes in ifdefs. It got too messy.
@@ -1344,15 +1354,15 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 #ifdef MDEBUG
 
 // set record size in 2 byte field.
-static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
-{
-    int64_t curpos = avio_tell(pb);
-    avio_seek(pb, pos, SEEK_SET);
-    avio_wb16(pb, (short int)(curpos - pos + offset)); /* rewrite size */
-    avio_seek(pb, curpos, SEEK_SET);
-
-    return curpos - pos;
-}
+//static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
+//{
+//    int64_t curpos = avio_tell(pb);
+//    avio_seek(pb, pos, SEEK_SET);
+//    avio_wb16(pb, (short int)(curpos - pos + offset)); /* rewrite size */
+//    avio_seek(pb, curpos, SEEK_SET);
+//
+//    return curpos - pos;
+//}
 
 static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
@@ -1374,10 +1384,9 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 		avio_wb32(pb, 0x1);
 	    return updateSize(pb, pos);
 	}
-    avio_wb32(pb, 0); /* version & flags */
     // Defined fields (150 bytes)
     // set reference info
-	char *inputFilename = formatObj->cur_st->inputFilename;
+    avio_wb32(pb, 0); /* version & flags */
     avio_wb32(pb, 0); // user name/ app
     int64_t pos2 = avio_tell(pb);
     avio_wb16(pb, 0); // size
@@ -1390,10 +1399,18 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_zero(pb, 2); // volume signal
     avio_wb16(pb, 1);   // drive type
     avio_wb32(pb, 0xffffffff); // parent dir
-    avio_w8(pb, strlen(getFilename()));  // file name length (assume it is there)
-    char* fn = getFilename();
-    avio_put_str(pb, fn);
-    avio_zero(pb, 63 - strlen(getFilename()));
+
+    /**
+     * get file name and path. The problem is we do not know if the
+     * input parameter was a fill path or relative to something.
+     */
+    char path[50];
+	char *absolutePath = realpath(formatObj->cur_st->inputFilename, path);
+	char* filename = getFilename(absolutePath);
+	// if relative pathname, construct full name
+    avio_w8(pb, strlen(filename));  // file name length (assume it is there)
+    avio_put_str(pb, filename);
+    avio_zero(pb, 63 - strlen(filename));
     avio_zero(pb, 4); //local date
     avio_zero(pb, 4); // file type
     avio_zero(pb, 4); // creator
@@ -1413,12 +1430,12 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_w8(pb, '=');
 
     // put in path with '/' replaced by ':'
-    avio_wb32(pb, strlen(inputFilename));
-    avio_put_str(pb, replacechar(inputFilename, '/', ':'));
+    avio_wb32(pb, strlen(absolutePath));
+    avio_put_str(pb, replacechar(absolutePath, '/', ':'));
     avio_wb32(pb, 0x00001200);
     avio_w8(pb, '<');
-    avio_put_str(pb, inputFilename);
-
+    avio_put_str(pb, absolutePath);
+    updateSize16(pb, pos2+4);
     return updateSize(pb, pos);
 }
 /**
@@ -1444,10 +1461,9 @@ static int mov_write_dref_tag(AVIOContext *pb, MOVTrack *track)
 }
 
 
-static char* getFilename()
+static char* getFilename(char* path)
 {
-	av_log(NULL, AV_LOG_DEBUG, "Reference: %s\n", formatObj->cur_st->inputFilename);
-	return (endSlash != -1) ? formatObj->cur_st->inputFilename + endSlash + 1 : formatObj->cur_st->inputFilename;
+	return strrchr(path, '/');
 }
 
 static off_t getFileSize(char* filename)
