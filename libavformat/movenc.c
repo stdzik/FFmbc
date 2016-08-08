@@ -1456,10 +1456,12 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     {
     	relPath = &absolutePath[16];
     }
+    av_log(NULL, AV_LOG_DEBUG, "relative path %s\n", relPath);
     avio_wb32(pb, strlen(relPath));
     avio_put_str(pb, "A*");
     avio_put_str(pb, replacechar(absolutePath, '/', ':'));
     avio_wb32(pb, 0x00001200);
+    avio_w8(pb, 0x40);
     avio_put_str(pb, relPath);
     avio_wb32(pb, 0x000b0006);
     avio_wb32(pb, 0x00000002);
