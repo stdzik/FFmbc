@@ -141,11 +141,11 @@ static int64_t updateSize(AVIOContext *pb, int64_t pos)
     return curpos - pos;
 }
 
-static int64_t updateSize16(AVIOContext *pb, int64_t pos)
+static int64_t updateSize16(AVIOContext *pb, int64_t pos, offset)
 {
     int64_t curpos = avio_tell(pb);
     avio_seek(pb, pos, SEEK_SET);
-    avio_wb16(pb, curpos - pos); /* rewrite size */
+    avio_wb16(pb, curpos - pos + offset); /* rewrite size */
     avio_seek(pb, curpos, SEEK_SET);
 
     return curpos - pos;
@@ -1444,18 +1444,28 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     av_log(NULL, AV_LOG_DEBUG, "parent dir %s\n", parentDir);
     avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
-    avio_w8(pb, 0);
-    avio_w8(pb, 2);
-    avio_w8(pb, 0);
-    avio_w8(pb, '=');
+    avio_wb32(pb, 0x00000200);
 
     // put in path with '/' replaced by ':'
-    avio_wb32(pb, strlen(absolutePath));
+    // if linux, do not use actual absolute path, remove mount point path.
+    char xsan[17] = "/data/snfs/xsan/";
+    char ysan[17] = "/data/snfs/ysan/";
+    char * relPath = absolutePath;
+    // if the san is used:
+    if(strstr(absolutePath, xsan) != NULL || strstr(absolutePath, ysan) != NULL)
+    {
+    	relPath = &absolutePath[16];
+    }
+    avio_wb32(pb, strlen(relPath));
+    avio_put_str(pb, "A*");
     avio_put_str(pb, replacechar(absolutePath, '/', ':'));
     avio_wb32(pb, 0x00001200);
-    avio_w8(pb, '<');
-    avio_put_str(pb, absolutePath);
-    updateSize16(pb, pos2+4);
+    avio_put_str(pb, relPath);
+    avio_wb32(pb, 0x000b0006);
+    avio_wb32(pb, 0x00000002);
+    avio_wb32(pb, 0x7600ffff);
+    avio_zero(pb, 22);
+    //updateSize16(pb, pos2, 4);
     return updateSize(pb, pos);
 }
 /**
