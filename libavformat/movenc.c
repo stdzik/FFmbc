@@ -128,7 +128,6 @@ static const AVClass mov_muxer_class = {
 static AVFormatContext *formatObj;
 static int startSlash = -1;
 static int endSlash = -1;
-char parentDir[100] = "";
 static int timeCodeStream;
 
 //FIXME support 64 bit variant with wide placeholders
@@ -1363,6 +1362,20 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 //
 //    return curpos - pos;
 //}
+static char* getParentDir(char* path, char* filename, char* result)
+{
+	if(path == filename - 1)
+		return 0; // root, no parent
+
+	for(char* ptr = filename - 2; ptr != '/' && ptr > path; --ptr) {
+		if(*ptr == '/') {
+			av_strlcpy(result, ptr + 1, filename - ptr - 1);
+			return result;
+		}
+	}
+	return 0; // error if you get here
+}
+
 
 static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
@@ -1422,7 +1435,12 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 
     // added for Premiere 10.3 compatibility
     // undefined fields
-    avio_wb32(pb, strlen(parentDir));
+    // added for Premiere 10.3 compatibility
+    // undefined fields
+    char parentDir[100];
+    getParentDir(path, filename, parentDir);
+    av_log(NULL, AV_LOG_DEBUG, "parent dir %s\n", parentDir);
+    avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
     avio_w8(pb, 0);
     avio_w8(pb, 2);
@@ -1463,7 +1481,7 @@ static int mov_write_dref_tag(AVIOContext *pb, MOVTrack *track)
 
 static char* getFilename(char* path)
 {
-	return strrchr(path, '/');
+	return strrchr(path, '/') + 1; // do not include / in filename
 }
 
 static off_t getFileSize(char* filename)
