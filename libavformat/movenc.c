@@ -1416,7 +1416,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * get file name and path. The problem is we do not know if the
      * input parameter was a fill path or relative to something.
      */
-    char path[50];
+    char path[100];
 	char *absolutePath = realpath(formatObj->cur_st->inputFilename, path);
 	char* filename = getFilename(absolutePath);
 	// if relative pathname, construct full name
@@ -1440,7 +1440,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     // added for Premiere 10.3 compatibility
     // undefined fields
     char parentDir[100];
-    getParentDir(path, filename, parentDir);
+    getParentDir(absolutePath, filename, parentDir);
     av_log(NULL, AV_LOG_DEBUG, "parent dir %s\n", parentDir);
     avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
