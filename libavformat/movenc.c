@@ -141,7 +141,7 @@ static int64_t updateSize(AVIOContext *pb, int64_t pos)
     return curpos - pos;
 }
 
-static int64_t updateSize16(AVIOContext *pb, int64_t pos, offset)
+static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
 {
     int64_t curpos = avio_tell(pb);
     avio_seek(pb, pos, SEEK_SET);
