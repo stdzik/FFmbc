@@ -1376,7 +1376,6 @@ static char* getParentDir(char* path, char* filename, char* result)
 	return 0; // error if you get here
 }
 
-
 static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
 	MOVMuxContext* mov = formatObj->priv_data;
@@ -1423,15 +1422,18 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 	// if relative pathname, construct full name
     avio_w8(pb, strlen(filename));  // file name length (assume it is there)
     avio_put_str(pb, filename);
-    avio_zero(pb, 63 - strlen(filename));
-    avio_zero(pb, 4); //local date
+    avio_zero(pb, 63 - strlen(filename)-1);
+    avio_wb32(pb, 0xffffffff); //local date
+    avio_zero(pb, 1);
     avio_zero(pb, 4); // file type
     avio_zero(pb, 4); // creator
+    avio_zero(pb, 3); // empirically determined
     avio_wb16(pb, 1); // nlvl from
     avio_wb16(pb, 1); // nlvl to
     avio_zero(pb, 4); // vatt
     avio_zero(pb, 2); // sysid
     avio_zero(pb, 10); // reserved
+    avio_zero(pb, 2); // empirically determined
 
     // added for Premiere 10.3 compatibility
     // undefined fields
