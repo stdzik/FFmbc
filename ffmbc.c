@@ -2,7 +2,7 @@
  * ffmpeg main
  * Copyright (c) 2000-2003 Fabrice Bellard
  *
- * This file is part of FFmpeg
+ * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -29,7 +29,6 @@
 #include <signal.h>
 #include <limits.h>
 #include <unistd.h>
-#include <execinfo.h>
 #include "libavformat/avformat.h"
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
@@ -131,7 +130,7 @@ static const OptionDef options[];
 #define MAX_STREAMS 1024    /* arbitrary sanity check value */
 static const char *last_asked_format = NULL;
 #ifdef MDEBUG
-static char *cliTimecode = "00:00:00:00"; // initialize to
+static char *cliTimecode = NULL;
 #endif
 static double *ts_scale;
 static int  nb_ts_scale;
@@ -395,23 +394,6 @@ static InputStream *input_streams = NULL;
 static int         nb_input_streams = 0;
 static InputFile   *input_files   = NULL;
 static int         nb_input_files   = 0;
-
-#ifdef MDEBUG
-void handler(int sig) {
-  void *array[10];
-  size_t size;
-
-  // get void*'s for all entries on the stack
-  size = backtrace(array, 10);
-
-  // print out all the frames to stderr
-  if(sig == 11)
-	  fprintf(stderr, "Error: Segmentation Error\n");
-
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  exit(1);
-}
-#endif
 
 #if CONFIG_AVFILTER
 
@@ -2588,7 +2570,7 @@ static int transcode(AVFormatContext **output_files,
                      StreamMap *stream_maps, int nb_stream_maps)
 {
     int ret = 0, i, j, k, n, nb_ostreams = 0, nb_max_ostreams = 0, step;
-    av_log(NULL, AV_LOG_DEBUG, "transcode codec id %d nb_stream_maps %d\n", input_streams[0].st->codec->codec_id, nb_stream_maps);
+    av_log(NULL, AV_LOG_DEBUG, "nb_stream_maps %d\n", nb_stream_maps);
     AVFormatContext *is, *os;
     AVCodecContext *codec, *icodec;
     OutputStream *ost, **ost_table = NULL;
@@ -3294,8 +3276,7 @@ static int transcode(AVFormatContext **output_files,
         }
         copy_chapters(infile, outfile);
     }
-    AVStream* fp = output_files[0]->streams[0];
-    av_log(NULL, AV_LOG_DEBUG, "codec id %d\n", fp->codec->codec_id);
+
     /* open files and write file headers */
     for(i=0;i<nb_output_files;i++) {
         os = output_files[i];
@@ -3363,11 +3344,7 @@ static int transcode(AVFormatContext **output_files,
     term_init();
 
     timer_start = av_gettime();
-
-/**
- * scanning input media. DO NOT SCAN when creating linked mov files.
- */
-#ifndef MDEBUG
+#ifdef NOTNOW
     for(; received_sigterm == 0;) {
         int file_index, ist_index;
         AVPacket pkt;
@@ -4315,7 +4292,6 @@ static int opt_input_file(const char *opt, const char *filename)
             ist->dec= avcodec_find_decoder_by_name(video_codec_name);
             if(!ist->dec)
                 ist->dec = avcodec_find_decoder(dec->codec_id);
-            av_log(NULL, AV_LOG_DEBUG, "opt_input_file decoder id %d\n", ist->dec->id);
             if (dec->lowres) {
                 dec->flags |= CODEC_FLAG_EMU_EDGE;
             }
@@ -5561,8 +5537,6 @@ int main(int argc, char **argv)
         argv++;
     }
 
-    av_log_set_level(AV_LOG_DEBUG);
-
     avcodec_register_all();
 #if CONFIG_AVDEVICE
     avdevice_register_all();
@@ -5584,7 +5558,6 @@ int main(int argc, char **argv)
 
     /* parse options */
     parse_options(argc, argv, options, opt_output_file);
-    av_log(NULL, AV_LOG_DEBUG, "main2 %d\n",input_streams[0].st->codec->codec_id);
 
     if(nb_output_files <= 0 && nb_input_files == 0) {
         show_usage();
