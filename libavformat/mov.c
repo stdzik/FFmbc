@@ -2818,6 +2818,7 @@ static AVIndexEntry *mov_find_next_sample(AVFormatContext *s, AVStream **st)
 
 static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
+	av_log(s, AV_LOG_INFO, "mov_read_packet %s\n", s->iformat->long_name);
     MOVContext *mov = s->priv_data;
     MOVStreamContext *sc;
     AVIndexEntry *sample;

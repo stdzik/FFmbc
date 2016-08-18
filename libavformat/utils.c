@@ -713,6 +713,7 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     int ret, i;
     AVStream *st;
+    av_log(s, AV_LOG_DEBUG, "av_read_packet enter %s\n", s->filename);
 
     for(;;){
         AVPacketList *pktl = s->raw_packet_buffer;
@@ -729,7 +730,6 @@ int av_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         av_init_packet(pkt);
         ret= s->iformat->read_packet(s, pkt);
-        av_log(s, AV_LOG_DEBUG, "after read_packet loop %d\n", ret);
         if (ret < 0) {
             if (!pktl || ret == AVERROR(EAGAIN)) {
                 av_log(s, AV_LOG_DEBUG, "av_read_packet exit %d\n", ret);
