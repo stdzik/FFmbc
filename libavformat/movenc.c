@@ -3387,16 +3387,21 @@ static int mov_compute_moov_size(AVFormatContext *s)
 /**
  * Populates frame positions in video track.
  * Not needed for audio since all frames are the same size.
+ * Assuming for now only 1 video file.
  *
  **/
-static int mov_populate_video_index(MOVMuxContext *mov)
+static int mov_populate_video_index(MOVMuxContext *mov, char* inputFile)
 {
-	mov->videoIndexFile = "/Users/stevendzik/ffdata/video_H0.idx";
 	av_log(NULL, AV_LOG_DEBUG, "mov_populate_video_index\n");
 	static const int INDEX_OFFSET = 0x2000;
 	static const int INDEX_ENTRY_SIZE = 0x10;
+	char videoIndexFile[100];
+	strcpy(videoIndexFile, inputFile);
+	videoIndexFile[strlen(videoIndexFile) - 3] = '_';
+	strcpy(videoIndexFile + strlen(videoIndexFile), ".idx");
+	av_log(globalFormat, AV_LOG_DEBUG, "videoIndexFile %s\n", videoIndexFile);
 	// open index file
-	FILE* fp = fopen(mov->videoIndexFile, "rb");
+	FILE* fp = fopen(videoIndexFile, "rb");
 	if(fp == NULL) {
 		av_log(NULL, AV_LOG_INFO, "fopen failed %d file %s\n", errno, mov->videoIndexFile);
 		return -1;
@@ -3521,9 +3526,15 @@ static int mov_write_trailer(AVFormatContext *s)
     int64_t moov_pos = avio_tell(pb);
 
     /***
-     * populate index information
+     * populate index information:
+     * 	Handle case where there is more than 1 video track.
+     * 	This could be put in the mov_write_trak_tag, but it is too much work right now.
      */
-    mov_populate_video_index(mov);
+    for(int i = 0; i < s->nb_streams; i++) {
+    	AVStream* stream = s->streams[i];
+    	if(stream->codec->codec_type == AVMEDIA_TYPE_VIDEO)
+    		mov_populate_video_index(mov, stream->inputFilename);
+    }
 
     /* Write size of mdat tag */
     if (mov->mdat_size+8 <= UINT32_MAX) {

@@ -130,7 +130,6 @@ typedef struct MOVMuxContext {
     int64_t free_pos; ///< position of the 'free' atom
     int stco_offset;  ///< value used to offset stco values
     int overwrite;    ///< overwrite output file to rewrite header at the front
-    char *videoIndexFile;
 } MOVMuxContext;
 
 #define FF_MOV_FLAG_RTP_HINT 1
