@@ -1443,51 +1443,45 @@ static int mov_write_ctts_tag(AVIOContext *pb, MOVTrack *track)
     av_free(ctts_entries);
     return atom_size;
 }
-
 /* Time to sample atom */
 static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 {
+	av_log(NULL, AV_LOG_DEBUG, "mov_write_stts_tag enter\n");
     MOVStts *stts_entries;
     uint32_t entries = -1;
     uint32_t atom_size;
     int i;
     if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO && !track->audio_vbr) {
         stts_entries = av_malloc(sizeof(*stts_entries)); /* one entry */
-        stts_entries[0].count = track->total_duration; // total_duration is number of samples
+        stts_entries[0].count = track->total_duration;
         stts_entries[0].duration = 1;
         entries = 1;
+        av_log(NULL, AV_LOG_DEBUG, "audio branch count %d duration %d\n",
+        		stts_entries[0].count, stts_entries[0].duration);
     } else {
-        stts_entries = av_malloc(track->entry * sizeof(*stts_entries)); /* worst case */
-        for (i=0; i<track->entry; i++) {
-            int64_t duration = i + 1 == track->entry ?
-                track->total_duration - track->cluster[i].dts + track->cluster[0].dts : /* readjusting */
-                track->cluster[i+1].dts - track->cluster[i].dts;
-            if (i && duration == stts_entries[entries].duration) {
-                stts_entries[entries].count++; /* compress */
-            } else {
-                entries++;
-                stts_entries[entries].duration = duration;
-                stts_entries[entries].count = 1;
-            }
-        }
-        entries++; /* last one */
-    }
+    	entries = 1;
+        stts_entries = av_malloc(entries*sizeof(MOVStts)); /* worst case */
+    	stts_entries[0].count = track->entry;
+    	stts_entries[0].duration = track->total_duration/track->entry;
 
+    	av_log(NULL, AV_LOG_DEBUG, "non-audio branch media %d count %d duration %d\n",
+        		track->enc->codec_type, stts_entries[0].count, track->total_duration);
+    }
     atom_size = 16 + (entries * 8);
     avio_wb32(pb, atom_size); /* size */
     avio_wtag(pb, "stts");
     avio_wb32(pb, 0); /* version & flags */
-    {
-		avio_wb32(pb, entries); /* entry count */
-		for (i=0; i<entries; i++) {
-			avio_wb32(pb, stts_entries[i].count);
-			avio_wb32(pb, stts_entries[i].duration);
-		}
+    avio_wb32(pb, entries); /* entry count */
+    for (i=0; i<entries; i++) {
+        avio_wb32(pb, stts_entries[i].count);
+        avio_wb32(pb, stts_entries[i].duration);
+        av_log(NULL, AV_LOG_DEBUG, "mov_write_stts_tag count %d duration %d\n",
+        		stts_entries[i].count, stts_entries[i].duration);
     }
     av_free(stts_entries);
+	av_log(NULL, AV_LOG_DEBUG, "mov_write_stts_tag exit\n");
     return atom_size;
 }
-
 #ifdef MDEBUG
 
 // set record size in 2 byte field.
@@ -3403,7 +3397,7 @@ static int mov_populate_video_index(MOVMuxContext *mov, char* inputFile)
 	// open index file
 	FILE* fp = fopen(videoIndexFile, "rb");
 	if(fp == NULL) {
-		av_log(NULL, AV_LOG_INFO, "fopen failed %d file %s\n", errno, mov->videoIndexFile);
+		av_log(NULL, AV_LOG_INFO, "fopen failed %d file %s\n", errno, videoIndexFile);
 		return -1;
 	}
 
