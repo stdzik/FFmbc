@@ -1961,6 +1961,7 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVTrack *track, AVStream *st)
                                       MOV_TIMESCALE, track->timescale,
                                       AV_ROUND_UP);
     int version = duration < INT32_MAX ? 0 : 1;
+    av_log(globalFormat, AV_LOG_DEBUG, "version %d duration %ld\n", version, duration);
 
     (version == 1) ? avio_wb32(pb, 104) : avio_wb32(pb, 92); /* size */
     avio_wtag(pb, "tkhd");
@@ -1981,7 +1982,7 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVTrack *track, AVStream *st)
     avio_wb32(pb, track->trackID); /* track-id */
     avio_wb32(pb, 0); /* reserved */
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_wb32(pb, 0x6800);
+    	avio_wb32(pb, 0x6800); // MAGIC NUMBER
     else
     	(version == 1) ? avio_wb64(pb, duration) : avio_wb32(pb, duration);
 
@@ -2215,6 +2216,8 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         duration = av_rescale_rnd(track->edit_duration +
                                   track->pts_offset, MOV_TIMESCALE,
                                   track->timescale, AV_ROUND_UP);
+        av_log(globalFormat, AV_LOG_DEBUG, "rescale in: %ld 1000 %u out %ld\n",
+        		track->edit_duration + track->pts_offset, track->timescale, duration);
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
             video_duration = FFMAX(video_duration, duration);
         max_duration = FFMAX(max_duration, duration);
@@ -2236,7 +2239,7 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         avio_wb32(pb, mov->time); /* modification time */
     }
 #if 1
-    avio_wb32(pb, 0x03e8);//MOV_TIMESCALE);
+    avio_wb32(pb, MOV_TIMESCALE);
     duration = 0x677e;
 #else
     avio_wb32(pb, MOV_TIMESCALE);
@@ -2685,6 +2688,8 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
         }
         track->edit_duration -= first_dec_pts - first_pts;
         track->first_edit_pts = first_dec_pts - first_pts;
+        av_log(s, AV_LOG_DEBUG, "moov: edit_duration %ld pts_offset %ld kf->dts %ld kf->cts %d first_dec_pts %ld\n",
+        		track->edit_duration, track->pts_offset, kf->dts, kf->cts, first_dec_pts);
 
         if (first_pts < 0) {
             track->first_edit_pts = -first_pts;
@@ -3430,6 +3435,8 @@ static int mov_populate_video_index(MOVMuxContext *mov, char* inputFile)
 		    track->cluster[j].chunkNum = 0;
 		    track->cluster[j].size = size;
 		    track->cluster[j].entries = 1;
+		    track->cluster[j].dts = 0;
+		    track->cluster[j].cts = 0;
 		    track->cluster[j].flags = MOV_PARTIAL_SYNC_SAMPLE; // until we know more about indexes they are all key frames
  		    track->chunkCount = 0;
 		}
