@@ -1609,24 +1609,15 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     	relPath = &absolutePath[15];
     }
     av_log(NULL, AV_LOG_DEBUG, "relative path %s\n", relPath);
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_wb16(pb, 0x2a00);
     char *relPathColon = replacechar(relPath, '/', ':');
     avio_w8(pb, strlen(relPathColon) + 1);
     avio_w8(pb, 0x2a);
     av_log(NULL, AV_LOG_DEBUG, "colonPath: %s\n", relPathColon);
     avio_put_str(pb, relPathColon);
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_w8(pb, 0);
     avio_w8(pb, 0);
     avio_wb16(pb, 0x1200);
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_w8(pb, 0x40);
-    else
-    	avio_w8(pb, strlen(relPath));
+    avio_w8(pb, strlen(relPath));
     avio_put_str(pb, relPath);
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_w8(pb, 0);
     avio_wb16(pb, 0x0b00);
     avio_w8(pb, 0x06);
     avio_wb32(pb, 0x00000002);
