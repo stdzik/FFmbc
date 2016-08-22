@@ -1596,12 +1596,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
     avio_w8(pb, 0);
-    avio_w8(pb, 0);
     avio_wb16(pb, 0x0200);
-    if(track->enc->codec_type != AVMEDIA_TYPE_AUDIO)
-    	avio_wb32(pb, 4);
-    else
-    	avio_zero(pb, 3);
 
     // put in path with '/' replaced by ':'
     // if linux, do not use actual absolute path, remove mount point path.
@@ -1614,11 +1609,11 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     	relPath = &absolutePath[15];
     }
     av_log(NULL, AV_LOG_DEBUG, "relative path %s\n", relPath);
-    //avio_wb16(pb, 0x392a);
-    avio_wb16(pb, 0x2141);
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     	avio_wb16(pb, 0x2a00);
     char *relPathColon = replacechar(relPath, '/', ':');
+    avio_w8(pb, strlen(relPathColon) + 1);
+    avio_w8(pb, 0x2a);
     av_log(NULL, AV_LOG_DEBUG, "colonPath: %s\n", relPathColon);
     avio_put_str(pb, relPathColon);
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
@@ -1628,7 +1623,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     	avio_w8(pb, 0x40);
     else
-    	avio_w8(pb, '8');
+    	avio_w8(pb, strlen(relPath));
     avio_put_str(pb, relPath);
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
     	avio_w8(pb, 0);
@@ -1637,7 +1632,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0x00000002);
     avio_wb32(pb, 0x7600ffff);
     avio_zero(pb, 22);
-    //updateSize16(pb, pos2, 4);
+    updateSize16(pb, pos2, 4);
     return updateSize(pb, pos);
 }
 /**
