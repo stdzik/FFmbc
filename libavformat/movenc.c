@@ -1592,7 +1592,8 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     // undefined fields
     char parentDir[100];
     getParentDir(absolutePath, filename, parentDir);
-    av_log(NULL, AV_LOG_DEBUG, "parent dir %s\n", parentDir);
+
+    av_log(NULL, AV_LOG_INFO, "parent dir %s\n", parentDir);
     avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
     avio_w8(pb, 0);
@@ -1602,13 +1603,26 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     // if linux, do not use actual absolute path, remove mount point path.
     char xsan[17] = "/data/snfs/xsan/";
     char ysan[17] = "/data/snfs/ysan/";
-    char * relPath = absolutePath;
+
     // if the san is used:
+    char * relPath = absolutePath;
     if(strstr(absolutePath, xsan) != NULL || strstr(absolutePath, ysan) != NULL)
     {
     	relPath = &absolutePath[15];
     }
-    av_log(NULL, AV_LOG_DEBUG, "relative path %s\n", relPath);
+    /**
+     * This is a hack. I don't understand why the actual path cannot be put here.
+     * It must be a string the length of the path of the sample file I used as model mov file.
+     * The contents of the string does not matter at this time. Neither Premiere 10 nor Elemental looks at it.
+     * I guess I have this length hard coded elsewhere in the code without being aware.
+     * Works for now, but in the long term it must be fixed.
+     **/
+#if 0
+    relPath = "/media/X-SAN_STUDIO_REC/20160510_NovickManualStop-1.cmf/video.H0";
+#else
+    relPath =   "1111111111111111111111111111111111111111111111111111111111111111";
+#endif
+    av_log(NULL, AV_LOG_INFO, "relative path %s\n", relPath);
     char *relPathColon = replacechar(relPath, '/', ':');
     avio_w8(pb, strlen(relPathColon) + 1);
     avio_w8(pb, 0x2a);
@@ -2202,7 +2216,7 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         duration = av_rescale_rnd(track->edit_duration +
                                   track->pts_offset, MOV_TIMESCALE,
                                   track->timescale, AV_ROUND_UP);
-        av_log(globalFormat, AV_LOG_DEBUG, "rescale in: %ld 1000 %u out %ld\n",
+        av_log(globalFormat, AV_LOG_INFO, "rescale in: %ld 1000 %u out %ld\n",
         		track->edit_duration + track->pts_offset, track->timescale, duration);
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
             video_duration = FFMAX(video_duration, duration);
@@ -2224,12 +2238,7 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         avio_wb32(pb, mov->time); /* creation time */
         avio_wb32(pb, mov->time); /* modification time */
     }
-#if 1
     avio_wb32(pb, MOV_TIMESCALE);
-    duration = 0x677e;
-#else
-    avio_wb32(pb, MOV_TIMESCALE);
-#endif
     (version == 1) ? avio_wb64(pb, duration) : avio_wb32(pb, duration);
 
     avio_wb32(pb, 0x00010000); /* reserved (preferred rate) 1.0 = normal */
