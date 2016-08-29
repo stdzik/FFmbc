@@ -1596,7 +1596,10 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     av_log(NULL, AV_LOG_INFO, "parent dir %s\n", parentDir);
     avio_wb16(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
+#define MAGICBYTE
+#ifdef MAGICBYTE
     avio_w8(pb, 0);
+#endif
     avio_wb16(pb, 0x0200);
 
     // put in path with '/' replaced by ':'
@@ -1605,6 +1608,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     char ysan[17] = "/data/snfs/ysan/";
 
     // if the san is used:
+#if 1
     char * relPath = absolutePath;
     if(strstr(absolutePath, xsan) != NULL || strstr(absolutePath, ysan) != NULL)
     {
@@ -1617,15 +1621,21 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * I guess I have this length hard coded elsewhere in the code without being aware.
      * Works for now, but in the long term it must be fixed.
      **/
-#if 0
-    relPath = "/media/X-SAN_STUDIO_REC/20160510_NovickManualStop-1.cmf/video.H0";
 #else
-    relPath =   "1111111111111111111111111111111111111111111111111111111111111111";
+    char relPath[200];
+    //int len = 63;
+    //memset(relPath, 1, len);
+    relPath[0]=0;
+    //char* relRoot = "/media/X-SAN_STUDIO_REC/"; // Hard code Novick path in alis
+    char* relRoot = "/media/X-RESTORE/X-RESTORE_DAILY/"; // Hard code trout and CHC path in alis
+    av_strlcat(relPath, relRoot, 200);
+    av_strlcat(relPath, parentDir, 200);
+    av_strlcat(relPath, "/video.H0", 200);
 #endif
     av_log(NULL, AV_LOG_INFO, "relative path %s\n", relPath);
     char *relPathColon = replacechar(relPath, '/', ':');
     avio_w8(pb, strlen(relPathColon) + 1);
-    avio_w8(pb, 0x2a);
+    avio_w8(pb, '*');
     av_log(NULL, AV_LOG_DEBUG, "colonPath: %s\n", relPathColon);
     avio_put_str(pb, relPathColon);
     avio_w8(pb, 0);
@@ -1637,7 +1647,9 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0x00000002);
     avio_wb32(pb, 0x7600ffff);
     avio_zero(pb, 22);
+#if 1
     updateSize16(pb, pos2, 4);
+#endif
     return updateSize(pb, pos);
 }
 /**
@@ -2641,6 +2653,7 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
         track->trackID = i+1;
 
         track->edit_duration = track->total_duration;
+        av_log(s, AV_LOG_INFO, "edit_duration %ld\n", track->edit_duration);
         first_pts = track->cluster[0].dts + track->cluster[0].cts;
         for (j = 1; j < track->entry; j++) {
             int64_t pts = track->cluster[j].dts + track->cluster[j].cts;
@@ -2663,7 +2676,7 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
             av_log(s, AV_LOG_WARNING, "track %d has no keyframes\n", i);
             continue;
         }
-
+        av_log(s, AV_LOG_INFO, "up to here\n");
         // check if first keyframe is reordered
         first_dec_pts = kf->dts + kf->cts;
         for (j++; j < track->entry; j++) {
