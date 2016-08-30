@@ -127,10 +127,17 @@ static int getVFrameCount(AVStream *st);
 static void setupTrackInfo(AVFormatContext *s);
 static void setCurrentStream(AVStream *st);
 
+/**
+ * The format context needs to be access in many places. It is cumbersome to make it
+ * an argument in every function. Making it global to the file is like making it an object variable.
+ */
 static AVFormatContext *globalFormat;
-static int startSlash = -1;
-static int endSlash = -1;
-char parentDir[100] = "";
+/**
+ * There are 2 durations in use.
+ * One is based on the video timebase and one on the audio timebase (sample rate).
+ * The video is the main one and must be referenced in the audio track too.
+ */
+static int64_t mvhd_duration;
 static int timeCodeStream;
 
 /**
@@ -220,8 +227,10 @@ static void setupTrackInfo(AVFormatContext *s)
         	track->total_duration = track->entry*1001;
     		av_log(s, AV_LOG_DEBUG, "setupTrackInfo video branch duration %d entry %d\n", track->total_duration, track->entry);
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
-        	track->entry = getFileSize(stream->inputFilename)/CHUNK_SIZE;
-        	track->total_duration = getFileSize(stream->inputFilename)/2;
+        	track->entry = getVFrameCount(stream);
+        	track->total_duration = track->entry*1001;
+//        	track->entry = getFileSize(stream->inputFilename)/CHUNK_SIZE;
+//        	track->total_duration = getFileSize(stream->inputFilename)/2;
         }
 	}
 	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s exit \n", s->filename);
@@ -1978,7 +1987,8 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVTrack *track, AVStream *st)
                                       MOV_TIMESCALE, track->timescale,
                                       AV_ROUND_UP);
     int version = duration < INT32_MAX ? 0 : 1;
-    av_log(globalFormat, AV_LOG_DEBUG, "version %d duration %ld\n", version, duration);
+    av_log(globalFormat, AV_LOG_DEBUG, "version %d duration %ld edit %ld pts %ld tscale %u\n",
+    		version, duration, track->edit_duration, track->pts_offset, track->timescale);
 
     (version == 1) ? avio_wb32(pb, 104) : avio_wb32(pb, 92); /* size */
     avio_wtag(pb, "tkhd");
@@ -1998,10 +2008,9 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVTrack *track, AVStream *st)
     }
     avio_wb32(pb, track->trackID); /* track-id */
     avio_wb32(pb, 0); /* reserved */
-    if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
-    	avio_wb32(pb, 0x6800); // MAGIC NUMBER
-    else
-    	(version == 1) ? avio_wb64(pb, duration) : avio_wb32(pb, duration);
+
+    // use the duration from the movie header
+    	(version == 1) ? avio_wb64(pb, mvhd_duration) : avio_wb32(pb, mvhd_duration);
 
     avio_wb32(pb, 0); /* reserved */
     avio_wb32(pb, 0); /* reserved */
@@ -2099,10 +2108,10 @@ static int mov_write_edts_tag(AVIOContext *pb, MOVTrack *track)
 
     /* duration */
     if (version == 1) {
-        avio_wb64(pb, edit_duration);
+        avio_wb64(pb, mvhd_duration);
         avio_wb64(pb, track->first_edit_pts);
     } else {
-        avio_wb32(pb, (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) ? 0x6800 : edit_duration);
+        avio_wb32(pb, mvhd_duration);
         avio_wb32(pb, track->first_edit_pts);
     }
     avio_wb32(pb, 0x00010000);
@@ -2256,6 +2265,7 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         avio_wb32(pb, mov->time); /* modification time */
     }
     avio_wb32(pb, MOV_TIMESCALE);
+    mvhd_duration = duration;
     (version == 1) ? avio_wb64(pb, duration) : avio_wb32(pb, duration);
 
     avio_wb32(pb, 0x00010000); /* reserved (preferred rate) 1.0 = normal */
