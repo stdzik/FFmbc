@@ -52,6 +52,8 @@
 #include "libavutil/dict.h"
 #include "rtpenc.h"
 
+typedef int BOOL;
+
 #define MDEBUG
 
 #ifdef MDEBUG
@@ -1527,6 +1529,20 @@ static const char* replacechar(char* string, char src, char dest)
 	return new_string;
 }
 
+/**
+ * poffset determines if the current position is odd or even.
+ * This is needed because certain fields must start on even locations
+ * (short word boundaries). It is hard to believe, in this day and age, we need
+ * to worry about this. Go figure.
+ */
+static BOOL poffset(AVIOContext *pb, int64_t pos) {
+	int64_t diff = avio_tell(pb) - pos;
+	BOOL val = !(diff % 2);
+	av_log(globalFormat, AV_LOG_DEBUG, "poffset: %d %ld %ld %ld\n",
+			val, avio_tell(pb), pos, diff, diff % 2);
+	return val;
+}
+
 static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 {
 	MOVMuxContext* mov = globalFormat->priv_data;
@@ -1584,7 +1600,8 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     avio_zero(pb, 4); // vatt
     avio_zero(pb, 2); // sysid
     avio_zero(pb, 10); // reserved
-    avio_zero(pb, 2); // empirically determined
+    // poffset - false (0) is even, true (1) is odd
+    avio_zero(pb,(poffset(pb, pos) ?  3 : 2)); // empirically determined, outputs 1 less if file name is longer
 
     // added for Premiere 10.3 compatibility
     // undefined fields
@@ -1594,12 +1611,12 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     getParentDir(absolutePath, filename, parentDir);
 
     av_log(NULL, AV_LOG_INFO, "parent dir %s\n", parentDir);
-    avio_wb16(pb, strlen(parentDir));
+    avio_w8(pb, strlen(parentDir));
     avio_put_str(pb, parentDir);
-#define MAGICBYTE
-#ifdef MAGICBYTE
-    avio_w8(pb, 0);
-#endif
+
+    if(poffset(pb, pos)) { // if odd position insert another 0
+        avio_w8(pb, 0);
+    }
     avio_wb16(pb, 0x0200);
 
     // put in path with '/' replaced by ':'
@@ -1607,49 +1624,37 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     char xsan[17] = "/data/snfs/xsan/";
     char ysan[17] = "/data/snfs/ysan/";
 
-    // if the san is used:
-#if 1
     char * relPath = absolutePath;
     if(strstr(absolutePath, xsan) != NULL || strstr(absolutePath, ysan) != NULL)
     {
     	relPath = &absolutePath[15];
     }
     /**
-     * This is a hack. I don't understand why the actual path cannot be put here.
-     * It must be a string the length of the path of the sample file I used as model mov file.
-     * The contents of the string does not matter at this time. Neither Premiere 10 nor Elemental looks at it.
-     * I guess I have this length hard coded elsewhere in the code without being aware.
-     * Works for now, but in the long term it must be fixed.
+     * I have determined, empirically, that the paths in the alis atom must start on even positions.
+     * And that if the 2nd path must end on an even position.
      **/
-#else
-    char relPath[200];
-    //int len = 63;
-    //memset(relPath, 1, len);
-    relPath[0]=0;
-    //char* relRoot = "/media/X-SAN_STUDIO_REC/"; // Hard code Novick path in alis
-    char* relRoot = "/media/X-RESTORE/X-RESTORE_DAILY/"; // Hard code trout and CHC path in alis
-    av_strlcat(relPath, relRoot, 200);
-    av_strlcat(relPath, parentDir, 200);
-    av_strlcat(relPath, "/video.H0", 200);
-#endif
     av_log(NULL, AV_LOG_INFO, "relative path %s\n", relPath);
     char *relPathColon = replacechar(relPath, '/', ':');
+    int pathLen = strlen(relPath);
     avio_w8(pb, strlen(relPathColon) + 1);
     avio_w8(pb, '*');
     av_log(NULL, AV_LOG_DEBUG, "colonPath: %s\n", relPathColon);
     avio_put_str(pb, relPathColon);
-    avio_w8(pb, 0);
+    if(poffset(pb, pos)) { // if odd, insert another 0
+    	avio_w8(pb, 0);
+    }
     avio_wb16(pb, 0x1200);
-    avio_w8(pb, strlen(relPath));
+    avio_w8(pb, pathLen);
     avio_put_str(pb, relPath);
+    if(poffset(pb, pos)) {
+    	avio_w8(pb, 0);
+    }
     avio_wb16(pb, 0x0b00);
     avio_w8(pb, 0x06);
     avio_wb32(pb, 0x00000002);
     avio_wb32(pb, 0x7600ffff);
     avio_zero(pb, 22);
-#if 1
     updateSize16(pb, pos2, 4);
-#endif
     return updateSize(pb, pos);
 }
 /**
