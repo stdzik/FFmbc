@@ -313,7 +313,6 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
 
     int equalChunks = 1;
     int i, j, entries = 0, tst = -1, oldtst = -1;
-
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "stsz");
@@ -345,27 +344,24 @@ static int mov_write_stsz_tag(AVIOContext *pb, MOVTrack *track)
 				}
 			}
 		}
-    } else { // audio sizes are fixed.
+    } else  { // audio sizes are fixed.
 
-    	int sSize =   getFileSize(globalFormat->cur_st->inputFilename)/CHUNK_SIZE;
-        sSize = FFMAX(1, sSize); // adpcm mono case could make sSize == 0
+      int sSize =   getFileSize(globalFormat->cur_st->inputFilename)/CHUNK_SIZE;
+      sSize = FFMAX(1, sSize); // adpcm mono case could make sSize == 0
 
-        /**
-         * Bit of a hack
-         */
-        if(track->enc->codec_type == AVMEDIA_TYPE_DATA) {
+      if(track->enc->codec_type == AVMEDIA_TYPE_DATA) {
         	sSize = 4;
         	entries = 1;
-        }
-        /**
-         * End hack
-         */
-
-        avio_wb32(pb, sSize); // sample size
-        avio_wb32(pb, entries); // sample count
-
+	 } else {
+	   sSize = 1;
+	   entries = track->entry;
+	 }
+          avio_wb32(pb, sSize); // sample size
+          avio_wb32(pb, entries); // sample count
+	  av_log(globalFormat, AV_LOG_INFO, "sample size %d # samples %d\n", sSize, entries);
     }
-	av_log(globalFormat, AV_LOG_INFO, "mov_write_stsz_tag exit\n");
+
+    av_log(globalFormat, AV_LOG_INFO, "mov_write_stsz_tag exit\n");
     return updateSize(pb, pos);
 }
 
@@ -1592,7 +1588,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * get file name and path. The problem is we do not know if the
      * input parameter was a fill path or relative to something.
      */
-    char path[100];
+    char path[200];
     char *absolutePath = realpath(globalFormat->cur_st->inputFilename, path);
     char* filename = getFilename(absolutePath);
 	// if relative pathname, construct full name
@@ -1950,10 +1946,12 @@ static int mov_write_mdhd_tag(AVIOContext *pb, MOVTrack *track)
         avio_wb32(pb, track->time); /* modification time */
     }
     avio_wb32(pb, track->timescale); /* time scale (sample rate for audio) */
+    int64_t duration = mvhd_duration*track->timescale/MOV_TIMESCALE;
+      av_log(globalFormat, AV_LOG_INFO, "mov_write_mdhd_tag duration %ld\n", duration);
     if (version == 1)
-        avio_wb64(pb, track->total_duration);
+      avio_wb64(pb, duration); //track->total_duration);
     else
-        avio_wb32(pb, track->total_duration); /* duration */
+      avio_wb32(pb, duration); //track->total_duration); /* duration */
     avio_wb16(pb, track->language); /* language */
     avio_wb16(pb, 0); /* reserved (quality) */
 
