@@ -54,6 +54,7 @@
 
 typedef int BOOL;
 
+#define PATHMAX 200
 #define MDEBUG
 
 #ifdef MDEBUG
@@ -404,22 +405,29 @@ static int mov_write_stsc_tag(AVIOContext *pb, MOVTrack *track)
     else
 #endif
     {
-		entryPos = avio_tell(pb);
-		avio_wb32(pb, track->chunkCount); // entry count
-		for (i=0; i<track->entry; i++) {
-			if(oldval != track->cluster[i].samplesInChunk && track->cluster[i].chunkNum)
-			{
-				avio_wb32(pb, track->cluster[i].chunkNum); // first chunk
-				avio_wb32(pb, track->cluster[i].samplesInChunk); // samples per chunk
-				avio_wb32(pb, 0x1); // sample description index
-				oldval = track->cluster[i].samplesInChunk;
-				index++;
-			}
-		}
-		curpos = avio_tell(pb);
-		avio_seek(pb, entryPos, SEEK_SET);
-		avio_wb32(pb, index); // rewrite size
-		avio_seek(pb, curpos, SEEK_SET);
+	entryPos = avio_tell(pb);
+#ifdef MDEBUG
+	avio_wb32(pb, 1);
+	avio_wb32(pb, 1);
+	avio_wb32(pb, 12);
+	avio_wb32(pb, 1);
+#else
+      	avio_wb32(pb, track->chunkCount); // entry count
+	for (i=0; i<track->entry; i++) {
+	     if(oldval != track->cluster[i].samplesInChunk && track->cluster[i].chunkNum)
+	     {
+		 avio_wb32(pb, track->cluster[i].chunkNum); // first chunk
+		 avio_wb32(pb, track->cluster[i].samplesInChunk); // samples per chunk
+		 avio_wb32(pb, 0x1); // sample description index
+		 oldval = track->cluster[i].samplesInChunk;
+		 index++;
+	      }
+	  }
+#endif
+	  curpos = avio_tell(pb);
+	  avio_seek(pb, entryPos, SEEK_SET);
+	  avio_wb32(pb, index); // rewrite size
+	  avio_seek(pb, curpos, SEEK_SET);
     }
     av_log(NULL, AV_LOG_INFO, "mov_write_stsc_tag exit\n");
     return updateSize(pb, pos);
@@ -1588,7 +1596,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * get file name and path. The problem is we do not know if the
      * input parameter was a fill path or relative to something.
      */
-    char path[200];
+    char path[PATH_MAX];
     char *absolutePath = realpath(globalFormat->cur_st->inputFilename, path);
     char* filename = getFilename(absolutePath);
 	// if relative pathname, construct full name
@@ -1638,6 +1646,16 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * I have determined, empirically, that the paths in the alis atom must start on even positions.
      * And that if the 2nd path must end on an even position.
      **/
+#if 0
+    // Hardcoding the original path of the content files so alis boxes will come out exactly
+    // like those in the reference mov. Needed for debugging
+    relPath[0] = 0;
+    char* root = "/media/X-SAN_GAMES_CLEAN/";
+    av_strlcat(relPath, root, PATHMAX);
+    av_strlcat(relPath, parentDir, PATHMAX);
+    av_strlcat(relPath, "/", PATHMAX);
+    av_strlcat(relPath, filename, PATHMAX);
+#endif
     av_log(NULL, AV_LOG_INFO, "relative path %s\n", relPath);
     char *relPathColon = replacechar(relPath, '/', ':');
     int pathLen = strlen(relPath);
@@ -2183,8 +2201,8 @@ static int mov_write_trak_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
 //        track->enc->sample_aspect_ratio.num > 0 &&
 //        track->enc->sample_aspect_ratio.den !=
 //        track->enc->sample_aspect_ratio.num)
-//    if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
-//        mov_write_tapt_tag(pb, track);
+    if(track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
+        mov_write_tapt_tag(pb, track);
     mov_write_edts_tag(pb, track); // PSP Movies require edts box
     if (track->tref_tag)
         mov_write_tref_tag(pb, track);
@@ -2819,7 +2837,7 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
     else
         avio_wtag(pb, "qt  ");
 
-    minor = 0x00000000; // this looks like a date. Probably not important
+    minor = 0x20050300; // this looks like a date. Probably not important
     avio_wb32(pb, minor);
 
     if(mov->mode == MODE_MOV)
@@ -2839,8 +2857,8 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
         avio_wtag(pb, "MSNV");
     else if (mov->mode == MODE_MP4)
         avio_wtag(pb, "mp41");
-//    else
-//    	avio_zero(pb, 12);
+    else
+   	avio_zero(pb, 12);
     return updateSize(pb, pos);
 }
 
