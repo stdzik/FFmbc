@@ -101,7 +101,7 @@ static const AVClass isom_muxer_class = {
     .class_name = "MP4/3GP/3G2 muxer",
     .item_name  = av_default_item_name,
     .option     = options,
-    .version    = LIBAVUTIL_VERSION_IFOT,
+    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 static const AVOption mov_options[] = {
@@ -3105,7 +3105,7 @@ static int mov_create_timecode_track(AVFormatContext *s, int tracknum)
                    "30000/1001 or 60000/1001 fps\n");
         return -1;
     }
-/
+
     track->mode = MODE_MOV;
     track->timescale = vst->codec->time_base.den;
     track->enc = avcodec_alloc_context3(NULL);
