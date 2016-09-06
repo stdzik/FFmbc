@@ -5585,7 +5585,7 @@ int main(int argc, char **argv)
     		mov->timecode = cliTimecode;
     	}
     }
-    av_log(NULL, AV_LOG_DEBUG, "timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
+    av_log(NULL, AV_LOG_INFO, "main: timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
 #endif
 
     if (transcode(output_files, nb_output_files, input_files, nb_input_files,

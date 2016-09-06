@@ -271,6 +271,10 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 		}
     }
     else if(track->enc->codec_type == AVMEDIA_TYPE_DATA) {
+      /**
+       * It is a little known fact (to me, at least) that in the time code track, the sample chunk offset
+       * is the location in the file where the timecode is kept. (Part of mdat).
+       */
     	avio_wtag(pb, "co64");
     	avio_wb32(pb, 0x0);
     	avio_wb32(pb, 0x1);
@@ -3077,6 +3081,7 @@ static int mov_create_timecode_track(AVFormatContext *s, int tracknum)
     AVPacket pkt;
     AVStream *vst = NULL;
     int i, framenum = 0, drop = 0;
+    av_log(globalFormat, AV_LOG_INFO, "mov_create_timecode_track enter timecode %s tracknum %d\n", mov->timecode, tracknum);
 
     for (i = 0; i < s->nb_streams; i++) {
         if (s->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -3124,7 +3129,7 @@ static int mov_create_timecode_track(AVFormatContext *s, int tracknum)
     ff_mov_write_packet(s, &pkt);
 
     av_free_packet(&pkt);
-
+    av_log(globalFormat, AV_LOG_INFO, "mov_create_timecode_track exit\n");
     return 0;
 }
 
