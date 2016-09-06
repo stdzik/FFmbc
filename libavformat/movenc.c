@@ -259,8 +259,8 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 #ifdef MDEBUG
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
     	avio_wtag(pb, "co64");
-    	const int OFFSETCOUNT = 1;//track->chunkCount;
-    	const int OFFSET = CHUNK_SIZE; // 2*track->cluster[0].size;
+    	const int OFFSETCOUNT = 1;
+    	const int OFFSET = CHUNK_SIZE;
 		avio_wb32(pb, 0x0);
 		avio_wb32(pb, OFFSETCOUNT);
 
@@ -270,12 +270,12 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 				avio_wb64(pb, pos);
 		}
     }
-    else
-    	if(track->enc->codec_type == AVMEDIA_TYPE_DATA) {
+    else if(track->enc->codec_type == AVMEDIA_TYPE_DATA) {
     	avio_wtag(pb, "co64");
     	avio_wb32(pb, 0x0);
     	avio_wb32(pb, 0x1);
-    	avio_wb64(pb, track->total_duration);
+    	avio_wb64(pb, track->cluster[0].pos + mov->stco_offset - mov->free_size); // why - free_size?
+	av_log(globalFormat, AV_LOG_INFO, "pos %lx offset %lx\n", track->cluster[0].pos, mov->stco_offset);
     }
     	else
 #endif
@@ -294,10 +294,10 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
 		avio_wb32(pb, 0); /* version & flags */
 		avio_wb32(pb, track->chunkCount); /* entry count */
 		for (i=0; i<track->entry; i++) {
-			if(!track->cluster[i].chunkNum)
-				continue;
+			if(!track->cluster[i].chunkNum)	
+			continue;
 			if(mode64 == 1)
-				avio_wb64(pb, track->cluster[i].pos+mov->stco_offset);
+			  avio_wb64(pb, track->cluster[i].pos+mov->stco_offset);
 			else {
 			   avio_wb32(pb, track->cluster[i].pos+mov->stco_offset);
 			}
@@ -1449,6 +1449,14 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
         entries = 1;
         av_log(NULL, AV_LOG_DEBUG, "audio branch count %d duration %d\n",
         		stts_entries[0].count, stts_entries[0].duration);
+    } else if(track->enc->codec_type == AVMEDIA_TYPE_DATA){
+        entries = 1;
+        stts_entries = av_malloc(entries*sizeof(MOVStts)); /* worst case */
+    	stts_entries[0].count = track->entry;
+    	stts_entries[0].duration = track->total_duration;
+
+    	av_log(NULL, AV_LOG_DEBUG, "non-audio branch media %d count %d duration %d\n",
+        		track->enc->codec_type, stts_entries[0].count, track->total_duration);
     } else {
     	entries = 1;
         stts_entries = av_malloc(entries*sizeof(MOVStts)); /* worst case */
