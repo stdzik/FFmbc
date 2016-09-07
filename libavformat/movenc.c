@@ -27,6 +27,9 @@
  * 		be changed from const to a regular variable in movenc.h
  *
  * 		It currently works for both timecodes set and not set.
+ *
+ * 		It looks like the standard here is that, when the return value is a status,
+ * 		success is 0 and errors are < 0. New functions follow that convention.
  */
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -124,7 +127,7 @@ static const AVClass mov_muxer_class = {
 static void avio_zero(AVIOContext*pb, int count);
 static off_t getFileSize(char* filename);
 static int getVFrameCount(AVStream *st);
-static void setupTrackInfo(AVFormatContext *s);
+static int setupTrackInfo(AVFormatContext *s);
 static void setCurrentStream(AVStream *st);
 
 /**
@@ -144,6 +147,7 @@ static int timeCodeStream;
  * Look up video size in frames from the xml file.
  * For now, assume there is only one xml file in the directory.
  */
+#ifdef MLB
 static int getVFrameCount(AVStream* st)
 {
 	/**
@@ -177,7 +181,7 @@ static int getVFrameCount(AVStream* st)
 	}
 	if(direntry == NULL) {
 		av_log(NULL, AV_LOG_DEBUG, "Error: No xml file found...exiting\n");
-		return AVERROR(-1);
+		return AVERROR(ENOENT);
 	}
 	char *xmlFile = direntry->d_name;
 	av_log(NULL, AV_LOG_DEBUG, "xmlFile %s\n", xmlFile);
@@ -208,10 +212,11 @@ static void setCurrentStream(AVStream *st)
 	globalFormat->cur_st = st;
 }
 
-static void setupTrackInfo(AVFormatContext *s)
+static int setupTrackInfo(AVFormatContext *s)
 {
 	av_log(s, AV_LOG_DEBUG, "setupTrackInfo enter\n");
 	globalFormat = s;
+	int retval = 0;
 	MOVMuxContext* mov = globalFormat->priv_data;
 	for(int i = 0; i < mov->nb_streams; i++)
 	{
@@ -222,17 +227,24 @@ static void setupTrackInfo(AVFormatContext *s)
 		av_log(s, AV_LOG_DEBUG, "setupTrackInfo codec type %d\n",track->enc->codec_type);
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO)
         {
-        	track->entry = getVFrameCount(stream);
+        	retval = getVFrameCount(stream);
+        	if(retval < 0) goto error;
+        	track->entry = retval;
         	track->total_duration = track->entry*1001;
     		av_log(s, AV_LOG_DEBUG, "setupTrackInfo video branch duration %d entry %d\n", track->total_duration, track->entry);
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
-        	track->entry = getVFrameCount(stream);
+        	retval = getVFrameCount(stream);
+        	if(retval < 0) goto error;
+        	track->entry = retval;
         	track->total_duration = track->entry*1001;
         }
 	}
-	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s exit \n", s->filename);
+	retval = 1;
+error:
+	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s exit retval: %d\n", s->filename, retval);
+	return retval;
 }
-
+#endif
 //FIXME support 64 bit variant with wide placeholders
 static int64_t updateSize(AVIOContext *pb, int64_t pos)
 {
@@ -3511,10 +3523,11 @@ static int mov_overwrite_file(AVFormatContext *s)
 static int mov_write_trailer(AVFormatContext *s)
 {
 	av_log(s, AV_LOG_DEBUG, "mov_write_trailer enter\n");
-	setupTrackInfo(s);
+    int res = 0;
+	res = setupTrackInfo(s);
+	if(res < 0)goto error;
     MOVMuxContext *mov = s->priv_data;
     AVIOContext *pb = s->pb;
-    int res = 0;
     int i;
     int64_t moov_pos = avio_tell(pb);
 
@@ -3585,7 +3598,8 @@ static int mov_write_trailer(AVFormatContext *s)
 
     av_freep(&mov->tracks);
 
-	av_log(s, AV_LOG_DEBUG, "mov_write_trailer exit\n");
+error:
+	av_log(s, AV_LOG_DEBUG, "mov_write_trailer exit retval %d\n", res);
     return res;
 }
 
