@@ -3407,12 +3407,12 @@ static int mov_populate_video_index(MOVMuxContext *mov, char* inputFile)
 	FILE* fp = fopen(videoIndexFile, "rb");
 	if(fp == NULL) {
 		av_log(NULL, AV_LOG_INFO, "fopen failed %d file %s\n", errno, videoIndexFile);
-		return -1;
+		return AVERROR(ENOENT);
 	}
 
 	if(fseek(fp, INDEX_OFFSET, SEEK_SET) != 0) {
 		av_log(NULL, AV_LOG_INFO, "fseek failed %d\n", errno);
-		return -1;
+		return AVERROR(ESPIPE);
 	}
 
 	for(int i = 0; i < mov->nb_streams; i++) {
@@ -3539,7 +3539,8 @@ static int mov_write_trailer(AVFormatContext *s)
     for(int i = 0; i < s->nb_streams; i++) {
     	AVStream* stream = s->streams[i];
     	if(stream->codec->codec_type == AVMEDIA_TYPE_VIDEO)
-    		mov_populate_video_index(mov, stream->inputFilename);
+    		res = mov_populate_video_index(mov, stream->inputFilename);
+    	if(res < 0)goto error;
     }
 
     /* Write size of mdat tag */
@@ -3596,9 +3597,9 @@ static int mov_write_trailer(AVFormatContext *s)
 
     avio_flush(pb);
 
+error:
     av_freep(&mov->tracks);
 
-error:
 	av_log(s, AV_LOG_DEBUG, "mov_write_trailer exit retval %d\n", res);
     return res;
 }
