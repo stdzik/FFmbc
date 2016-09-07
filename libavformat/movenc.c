@@ -54,9 +54,10 @@
 
 typedef int BOOL;
 
-#define MDEBUG
+#define MLB
+#define PATHMAX 200 // maximum length of file path
 
-#ifdef MDEBUG
+#ifdef MLB
 const int CLIP_SIZE = 0x40000 * 0xA;
 const int CHUNK_SIZE = 0x40000;
 #if __GNUC__ 
@@ -69,7 +70,6 @@ static void avio_zero(AVIOContext*pb, int count);
 static const char* replacechar(char* string, char src, char dest);
 #endif
 
-#undef NDEBUG
 #include <assert.h>
 
 #define IS_IMX(tag) (tag == AV_RL32("mx3p") || tag == AV_RL32("mx3n") || \
@@ -150,9 +150,8 @@ static int getVFrameCount(AVStream* st)
 	 * Get xml file (there should only be 1 in directory.
 	 * Get directory from inputFileName
 	 */
-#define PATHLEN 200
 	int duration;
-	char inputDir[PATHLEN];
+	char inputDir[PATHMAX];
 	char* inputPath = st->inputFilename;
 	av_log(NULL, AV_LOG_DEBUG, "input file %s\n", st->inputFilename);
 	char *dirEnd = strrchr(inputPath, '/');
@@ -185,8 +184,8 @@ static int getVFrameCount(AVStream* st)
 	/**
 	 * Find video length
 	 */
-	av_strlcat(inputDir, "/", PATHLEN);
-	av_strlcat(inputDir, xmlFile, PATHLEN);
+	av_strlcat(inputDir, "/", PATHMAX);
+	av_strlcat(inputDir, xmlFile, PATHMAX);
 	av_log(NULL, AV_LOG_DEBUG, "xmlPath %s\n", inputDir);
 	ezxml_t asset = ezxml_parse_file(inputDir);
 	for(ezxml_t track = ezxml_child(asset, "Track"); track; track = track->next) {
@@ -206,7 +205,7 @@ static int getVFrameCount(AVStream* st)
 
 static void setCurrentStream(AVStream *st)
 {
-	globalFormat->cur_st = st;   // added by SCD for POC.
+	globalFormat->cur_st = st;
 }
 
 static void setupTrackInfo(AVFormatContext *s)
@@ -229,8 +228,6 @@ static void setupTrackInfo(AVFormatContext *s)
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
         	track->entry = getVFrameCount(stream);
         	track->total_duration = track->entry*1001;
-//        	track->entry = getFileSize(stream->inputFilename)/CHUNK_SIZE;
-//        	track->total_duration = getFileSize(stream->inputFilename)/2;
         }
 	}
 	av_log(s, AV_LOG_DEBUG, "setupTrackInfo %s exit \n", s->filename);
@@ -246,6 +243,7 @@ static int64_t updateSize(AVIOContext *pb, int64_t pos)
 
     return curpos - pos;
 }
+
 /* Chunk offset atom */
 static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
                               MOVTrack *track)
@@ -256,7 +254,7 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     int mode64 = 0; //use 32 bit size variant if possible
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
-#ifdef MDEBUG
+#ifdef MLB
     if(track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
     	avio_wtag(pb, "co64");
     	const int OFFSETCOUNT = 1;
@@ -284,7 +282,7 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     	else
 #endif
     {
-#ifdef MDEBUG
+#ifdef MLB
 		mode64 = 1;
 		avio_wtag(pb, "co64");
 #else
@@ -707,7 +705,7 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
     }
 
     avio_wb32(pb, 0); /* size */
-#ifdef MDEBUG
+#ifdef MLB
     char atag[] = "sowt";
     avio_wl32(pb, *(int*)&atag);
     version = 1;
@@ -1202,7 +1200,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     		track->enc->codec_id);
 
     avio_wb32(pb, 0); /* size */
-#ifdef MDEBUG
+#ifdef MLB
     // sets the encoder to xd59 instead of m2v1
     char tag[] = "xd59";
     avio_wl32(pb, *(int*)&tag);
@@ -1216,7 +1214,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
     avio_wb16(pb, 1); /* Codec stream version */
     avio_wb16(pb, 1); /* Codec stream revision (=0) */
     if (track->mode == MODE_MOV) {
-#ifdef MDEBUG
+#ifdef MLB
         avio_wtag(pb, "appl"); /* Vendor */
 #else
         avio_wtag(pb, "FFMP"); /* Vendor */
@@ -1243,7 +1241,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tr
 
     memset(compressor_name,0,32);
     /* FIXME not sure, ISO 14496-1 draft where it shall be set to 0 */
-#ifdef MDEBUG
+#ifdef MLB
     av_strlcpy(compressor_name, "GVG XDCAM HD422 720p60-50 NTSC", 32);
 #endif
     if (track->mode == MODE_MOV && track->enc->codec && track->enc->codec->name)
@@ -1485,7 +1483,7 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
 	av_log(NULL, AV_LOG_DEBUG, "mov_write_stts_tag exit\n");
     return atom_size;
 }
-#ifdef MDEBUG
+#ifdef MLB
 
 // set record size in 2 byte field.
 static int64_t updateSize16(AVIOContext *pb, int64_t pos, int offset)
@@ -1584,7 +1582,7 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
      * get file name and path. The problem is we do not know if the
      * input parameter was a fill path or relative to something.
      */
-    char path[200];
+    char path[PATHMAX];
     char *absolutePath = realpath(globalFormat->cur_st->inputFilename, path);
     char* filename = getFilename(absolutePath);
 	// if relative pathname, construct full name
@@ -1604,10 +1602,12 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
     // poffset - false (0) is even, true (1) is odd
     avio_zero(pb,(poffset(pb, pos) ?  3 : 2)); // empirically determined, outputs 1 less if file name is longer
 
-    // added for Premiere 10.3 compatibility
-    // undefined fields
-    // added for Premiere 10.3 compatibility
-    // undefined fields
+    /**
+     *
+     * added for Premiere 10.3 compatibility and Elemental
+     * undefined fields (at least I don't have the definition of the fields).
+     *
+     */
     char parentDir[100];
     getParentDir(absolutePath, filename, parentDir);
 
@@ -1622,8 +1622,8 @@ static int mov_write_alis_tag(AVIOContext *pb, MOVTrack *track)
 
     // put in path with '/' replaced by ':'
     // if linux, do not use actual absolute path, remove mount point path.
-    char xsan[17] = "/data/snfs/xsan/";
-    char ysan[17] = "/data/snfs/ysan/";
+    char xsan[] = "/data/snfs/xsan/";
+    char ysan[] = "/data/snfs/ysan/";
 
     char * relPath = absolutePath;
     if(strstr(absolutePath, xsan) != NULL || strstr(absolutePath, ysan) != NULL)
@@ -1740,7 +1740,7 @@ static int mov_write_dinf_tag(AVIOContext *pb, MOVTrack *track)
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     avio_wtag(pb, "dinf");
-#ifdef MDEBUG
+#ifdef MLB
     mov_write_dref_tag(pb, track);
 #else
     mov_write_dref_tag(pb);
@@ -1822,7 +1822,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     int64_t pos = avio_tell(pb);
 
     if (!track) { /* no media --> data handler */
-#ifdef MDEBUG
+#ifdef MLB
         hdlr = "dhlr";
         hdlr_type = "alis";
         descr = "Apple Alias Data Handler";
@@ -1835,14 +1835,14 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
         hdlr = (track->mode == MODE_MOV) ? "mhlr" : "\0\0\0\0";
         if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO) {
         	hdlr_type = "vide";
-#ifdef MDEBUG
+#ifdef MLB
             descr = "Apple Video Media Handler";
 #else
             descr = "VideoHandler";
 #endif
         } else if (track->enc->codec_type == AVMEDIA_TYPE_AUDIO) {
             hdlr_type = "soun";
-#ifdef MDEBUG
+#ifdef MLB
             descr = "Apple Sound Media Handler";
 #else
             descr = "SoundHandler";
@@ -1866,7 +1866,7 @@ static int mov_write_hdlr_tag(AVIOContext *pb, MOVTrack *track)
     avio_wb32(pb, 0); /* Version & flags */
     avio_write(pb, hdlr, 4); /* handler */
     avio_wtag(pb, hdlr_type); /* handler type */
-#ifdef MDEBUG
+#ifdef MLB
     char qual[] = "appl";
     avio_write(pb, qual, strlen(qual));
     avio_wb32(pb, 0x1);
@@ -2164,7 +2164,7 @@ static int mov_write_trak_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
 {
 	globalFormat = s;
 	av_log(globalFormat, AV_LOG_DEBUG, "mov_write_trak_tag enter %d\n", track->enc->codec_type);
-#ifdef MDEBUG
+#ifdef MLB
 	globalFormat->cur_st = st;   // added by SCD for POC.
 	// I think this is what the value should be, I don't know why it becomes 0.
 	track->enc->sample_aspect_ratio.den = 0x4e0;
@@ -2192,34 +2192,6 @@ static int mov_write_trak_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
 	av_log(globalFormat, AV_LOG_DEBUG, "mov_write_trak_tag exit %d\n", track->enc->codec_type);
     return updateSize(pb, pos);
 }
-
-#if 0
-static const char* replacechar(char* string, char src, char dest)
-{
-	char* new_string = av_malloc(strlen(string));
-	for(int i = 0; i < strlen(string); i++) {
-		if(string[i] == src)
-			new_string[i] = dest;
-		else
-			new_string[i] = string[i];
-	}
-	return new_string;
-}
-
-/* TODO: Not sorted out, but not necessary either */
-static int mov_write_iods_tag(AVIOContext *pb, MOVMuxContext *mov)
-{
-    avio_wb32(pb, 0x15); /* size */
-    avio_wtag(pb, "iods");
-    avio_wb32(pb, 0);    /* version & flags */
-    avio_wb16(pb, 0x1007);
-    avio_w8(pb, 0);
-    avio_wb16(pb, 0x4fff);
-    avio_wb16(pb, 0xfffe);
-    avio_wb16(pb, 0x01ff);
-    return 0x15;
-}
-#endif
 
 static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
 {
@@ -2833,6 +2805,10 @@ static int mov_write_ftyp_tag(AVIOContext *pb, AVFormatContext *s)
         avio_wtag(pb, "MSNV");
     else if (mov->mode == MODE_MP4)
         avio_wtag(pb, "mp41");
+    /**
+     * This code is not needed functionally, but it makes the results
+     * look more like the reference files, making it easier to compare.
+     */
 //    else
 //    	avio_zero(pb, 12);
     return updateSize(pb, pos);
@@ -2927,7 +2903,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     AVCodecContext *enc = trk->enc;
     unsigned int samplesInChunk = 0;
     int size= pkt->size;
-#ifdef MDEBUG
+#ifdef MLB
     static uint64_t aviotell = 48;
 #endif
 	av_log(s, AV_LOG_DEBUG, "mov_write_packet %d %d %d %d\n",
@@ -2985,7 +2961,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
         }
     } else {
     	av_log(s, AV_LOG_INFO, "codecs %x %s\n", enc->codec_id, enc->codec_name);
-#ifdef MDEBUG
+#ifdef MLB
     	av_log(s, AV_LOG_INFO, "codecs %x %s\n", enc->codec_id, enc->codec_name);
     	if(enc->codec_id == CODEC_ID_MPEG2VIDEO ||
     	   enc->codec_id == CODEC_ID_PCM_S16LE)
@@ -3012,7 +2988,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
             return -1;
     }
 
-#ifdef MDEBUG
+#ifdef MLB
     trk->cluster[trk->entry].pos = aviotell - size;
     av_log(NULL, AV_LOG_DEBUG, "mov_write_packet aviato pos %lu tell %ld size %d\n",
     		trk->cluster[trk->entry].pos, aviotell, size);
@@ -3055,7 +3031,7 @@ int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     }
     trk->entry++;
     trk->sampleCount += samplesInChunk;
-#ifdef MDEBUG
+#ifdef MLB
     if(enc->codec_id != CODEC_ID_MPEG2VIDEO
     			&&
        enc->codec_id != CODEC_ID_PCM_S16LE) {
