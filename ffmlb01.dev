@@ -5,7 +5,7 @@
 # set -x
 FFMBC_PATH='/opt/qtwrapper'
 if [ "$#" -eq 0 ]; then
-	echo "command: ffmov contentfolder startingtimecode outputfilename (without suffix) "
+	echo "command: " $0 " contentfolder startingtimecode outputfilename (without suffix) "
 	exit 0
 fi
 
@@ -13,7 +13,7 @@ dir="$1"
 lockFile="$dir"/mov.lck
 trap 'echo "Interrupt..."; rm -f $lockFile; exit 1;' SIGINT
 
-tcode=$21G
+tcode=$2
 output="$dir"/$3.mov
 opts='-f s16le -ar 48000 -i '
 map='-map_audio_channel '
@@ -46,7 +46,7 @@ do
 	let "i++"
 done
 
-cmd="$FFMBC_PATH/ffmbc_mlb-0.1-wa -y -v 3 -i \"$dir\"/video.H0 -timecode \"$tcode\" -f s16le -ar 48000 $audioSpec -vcodec copy -acodec copy -strict experimental  -f mov \"$output\" 2> \"$logFile\""
+cmd="$FFMBC_PATH/ffmbc_mlb-0.1-dev -y -v 3 -i \"$dir\"/video.H0 -timecode \"$tcode\" -f s16le -ar 48000 $audioSpec -vcodec copy -acodec copy -strict experimental  -f mov \"$output\" 2> \"$logFile\""
 
 echo $cmd
 
@@ -60,9 +60,4 @@ if [ $retcode -ne 0 ]; then
     tail "$logFile"
 fi
 rm "$lockFile"
-exit 0
-
-
-
-
-
+exit $retcode
