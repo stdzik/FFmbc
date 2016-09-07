@@ -3564,7 +3564,9 @@ static int transcode(AVFormatContext **output_files,
     /* write the trailer if needed and close file */
     for(i=0;i<nb_output_files;i++) {
         os = output_files[i];
-        av_write_trailer(os);
+        if((ret = av_write_trailer(os)) < 0) {
+        	goto fail;
+        }
     }
 
     /* dump report by using the first video and audio streams */
@@ -5589,8 +5591,10 @@ int main(int argc, char **argv)
 #endif
 
     if (transcode(output_files, nb_output_files, input_files, nb_input_files,
-                  stream_maps, nb_stream_maps) < 0)
+                  stream_maps, nb_stream_maps) < 0) {
+    	av_log(NULL, AV_LOG_DEBUG, "main: transocde error\n");
         ffmpeg_exit(1);
+    }
     ti = getutime() - ti;
     if (do_benchmark) {
         int maxrss = getmaxrss() / 1024;

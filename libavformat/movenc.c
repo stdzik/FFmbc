@@ -289,7 +289,7 @@ static int mov_write_stco_tag(AVIOContext *pb, MOVMuxContext *mov,
     	avio_wb32(pb, 0x0);
     	avio_wb32(pb, 0x1);
     	avio_wb64(pb, track->cluster[0].pos + mov->stco_offset - mov->free_size); // why - free_size?
-	av_log(globalFormat, AV_LOG_DEBUG, "pos %lx offset %lx\n", track->cluster[0].pos, mov->stco_offset);
+    	av_log(globalFormat, AV_LOG_DEBUG, "pos %lx offset %lx\n", track->cluster[0].pos, mov->stco_offset);
     }
     	else
 #endif
