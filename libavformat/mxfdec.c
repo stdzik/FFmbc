@@ -695,11 +695,48 @@ static int mxf_read_source_clip(AVFormatContext *s, void *arg, int tag, int size
     return 0;
 }
 
+/**
+ * set starting timecode in place
+ */
+static void mxf_set_starting_timecode_inplace(AVFormatContext *s, MXFTimecodeComponent *timeStruct)
+{
+	char timecode[16] = "11:00:00:00";
+	int64_t offset = avio_tell(s->pb);
+	FILE *fp = fopen(s->filename, "r+b");
+	fseek(fp, offset, SEEK_SET);
+	AVRational base;
+	base.num = timeStruct->base;
+	base.den = base.num*base.num - base.num/2;
+	int drop =  (timecode[8] == ';');
+    int64_t framenum = (int64_t)ff_timecode_to_framenum(timecode, base, &drop);
+    uint8_t* framebytes = (uint8_t*)&framenum;
+    uint8_t tmp;
+    tmp = framebytes[0];
+    framebytes[0] = framebytes[7];
+    framebytes[7] = tmp;
+    tmp = framebytes[1];
+    framebytes[1] = framebytes[6];
+    framebytes[6] = tmp;
+    tmp = framebytes[2];
+    framebytes[2] = framebytes[5];
+    framebytes[5] = tmp;
+    tmp = framebytes[3];
+    framebytes[3] = framebytes[4];
+    framebytes[4] = tmp;
+	fwrite(framebytes, 1, 8, fp);
+	fclose(fp);
+}
+/***
+ * BEWARE: This has been modified to set the timecode while it is being read. It is not a simple read
+ * function anymore.
+ */
 static int mxf_read_timecode_component(AVFormatContext *s, void *arg, int tag, int size, UID uid)
 {
     MXFTimecodeComponent *timecode = arg;
     switch(tag) {
     case 0x1501: // Start Time Code
+        av_log(NULL, AV_LOG_DEBUG, "mxf_read_timecode_component tell %x\n", avio_tell(s->pb));
+        mxf_set_starting_timecode_inplace(s, timecode);
         timecode->start = avio_rb64(s->pb);
         break;
     case 0x1502: // Rounded Time Code Base
