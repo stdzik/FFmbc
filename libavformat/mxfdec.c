@@ -710,22 +710,15 @@ static void mxf_set_starting_timecode_inplace(AVFormatContext *s, MXFTimecodeCom
 	base.num = timeStruct->base;
 	base.den = base.num*base.num - base.num/2;
 	int drop =  (timecode[8] == ';');
-    int64_t framenum = (int64_t)ff_timecode_to_framenum(timecode, base, &drop);
-    uint8_t* framebytes = (uint8_t*)&framenum;
-    uint8_t tmp;
-    tmp = framebytes[0];
-    framebytes[0] = framebytes[7];
-    framebytes[7] = tmp;
-    tmp = framebytes[1];
-    framebytes[1] = framebytes[6];
-    framebytes[6] = tmp;
-    tmp = framebytes[2];
-    framebytes[2] = framebytes[5];
-    framebytes[5] = tmp;
-    tmp = framebytes[3];
-    framebytes[3] = framebytes[4];
-    framebytes[4] = tmp;
-	fwrite(framebytes, 1, 8, fp);
+	int64_t framenum = (int64_t)ff_timecode_to_framenum(timecode, base, &drop);
+	av_log(s, AV_LOG_DEBUG, "framenum %lx\n", framenum);
+	uint8_t* framebytes = (uint8_t*)&framenum;
+	for(int i = 0; i < 4; i++) {
+		int tmp = framebytes[i];
+		framebytes[i] = framebytes[7-i];
+		framebytes[7-i] = tmp;
+	}
+	fwrite(	framebytes, 1, 8, fp);
 	fclose(fp);
 	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_timecode_inplace exit %s\n", s->timecode);
 }
@@ -738,7 +731,7 @@ static int mxf_read_timecode_component(AVFormatContext *s, void *arg, int tag, i
     MXFTimecodeComponent *timecode = arg;
     switch(tag) {
     case 0x1501: // Start Time Code
-        mxf_set_starting_timecode_inplace(s, timecode);
+    	mxf_set_starting_timecode_inplace(s, timecode);
         timecode->start = avio_rb64(s->pb);
         break;
     case 0x1502: // Rounded Time Code Base
