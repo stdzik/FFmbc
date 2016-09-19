@@ -239,7 +239,6 @@ void parse_options(int argc, char **argv, const OptionDef *options,
     optindex = 1;
     while (optindex < argc) {
         opt = argv[optindex++];
-
         if (handleoptions && opt[0] == '-' && opt[1] != '\0') {
             int bool_val = 1;
             if (opt[1] == '-' && opt[2] == '\0') {

@@ -885,6 +885,7 @@ typedef struct AVFormatContext {
      * duration are known as FFmpeg can compute it automatically.
      */
     int64_t bit_rate;
+    char *timecode;
 } AVFormatContext;
 
 typedef struct AVPacketList {

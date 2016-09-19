@@ -4186,6 +4186,10 @@ static int opt_input_file(const char *opt, const char *filename)
         find_codec_or_die(subtitle_codec_name, AVMEDIA_TYPE_SUBTITLE, 0);
     ic->flags |= AVFMT_FLAG_NONBLOCK;
 
+#ifdef MDEBUG
+    ic->timecode = cliTimecode;
+#endif
+
     /* open the input file with generic libav function */
     err = avformat_open_input(&ic, filename, file_iformat, &format_opts);
     if (err < 0) {
@@ -5565,6 +5569,11 @@ int main(int argc, char **argv)
         show_usage();
         av_log(NULL, AV_LOG_ERROR, "Use -h to get full help or, even better, run 'man ffmbc'\n");
         ffmpeg_exit(1);
+    }
+
+    if(cliTimecode && !strcmp(input_files[0].ctx->iformat->name, "mxf")) {
+    		fprintf(stderr, "Timecode successfully inserted\n");
+        	return ffmpeg_exit(0);
     }
 
     /* file converter / grab */

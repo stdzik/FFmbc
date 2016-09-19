@@ -643,7 +643,6 @@ int url_fgetc(AVIOContext *s)
 int avio_read(AVIOContext *s, unsigned char *buf, int size)
 {
     int len, size1;
-    av_log(NULL, AV_LOG_DEBUG, "avio_read\n");
     size1 = size;
     while (size > 0) {
         len = s->buf_end - s->buf_ptr;

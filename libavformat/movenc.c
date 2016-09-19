@@ -3082,6 +3082,8 @@ static int mov_create_timecode_track(AVFormatContext *s, int tracknum)
 
     if (mov->timecode)
         framenum = ff_timecode_to_framenum(mov->timecode, vst->codec->time_base, &drop);
+
+    av_log(s, AV_LOG_DEBUG, "framenum %x\n", framenum);
     if (framenum < 0) {
         if (framenum == -1)
             av_log(s, AV_LOG_ERROR, "error parsing timecode, syntax: 00:00:00[;:]00\n");
@@ -3510,12 +3512,11 @@ static int mov_overwrite_file(AVFormatContext *s)
     }
 
     avio_close(rpb);
-
     avio_write(pb, wbuf, wsize);
     avio_write(pb, rbuf, rsize);
     av_free(rbuf);
     av_free(wbuf);
-	av_log(s, AV_LOG_DEBUG, "mov_overwrite_file exit\n");
+    av_log(s, AV_LOG_DEBUG, "mov_overwrite_file exit\n");
 
     return 0;
 }
@@ -3579,7 +3580,6 @@ static int mov_write_trailer(AVFormatContext *s)
         avio_seek(pb, moov_pos, SEEK_SET);
         mov_write_moov_tag(pb, mov, s);
     }
-
     if (mov->chapter_track)
         av_freep(&mov->tracks[mov->chapter_track].enc);
 
@@ -3594,7 +3594,6 @@ static int mov_write_trailer(AVFormatContext *s)
         if(mov->tracks[i].vosLen) av_free(mov->tracks[i].vosData);
 
     }
-
     avio_flush(pb);
 
 error:

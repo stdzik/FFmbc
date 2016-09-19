@@ -121,6 +121,7 @@ typedef struct {
     KLVPacket klv;                ///< used for clip wrapping
     unsigned edit_unit_bytecount; ///< used for clip wrapping
     MXFDescriptor *descriptor;
+    char timecode[16];
 } MXFTrack;
 
 typedef struct {
@@ -700,7 +701,8 @@ static int mxf_read_source_clip(AVFormatContext *s, void *arg, int tag, int size
  */
 static void mxf_set_starting_timecode_inplace(AVFormatContext *s, MXFTimecodeComponent *timeStruct)
 {
-	char timecode[16] = "11:00:00:00";
+	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_timecode_inplace enter %s\n", s->timecode);
+	char *timecode = s->timecode;
 	int64_t offset = avio_tell(s->pb);
 	FILE *fp = fopen(s->filename, "r+b");
 	fseek(fp, offset, SEEK_SET);
@@ -725,6 +727,7 @@ static void mxf_set_starting_timecode_inplace(AVFormatContext *s, MXFTimecodeCom
     framebytes[4] = tmp;
 	fwrite(framebytes, 1, 8, fp);
 	fclose(fp);
+	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_timecode_inplace exit %s\n", s->timecode);
 }
 /***
  * BEWARE: This has been modified to set the timecode while it is being read. It is not a simple read
@@ -735,7 +738,6 @@ static int mxf_read_timecode_component(AVFormatContext *s, void *arg, int tag, i
     MXFTimecodeComponent *timecode = arg;
     switch(tag) {
     case 0x1501: // Start Time Code
-        av_log(NULL, AV_LOG_DEBUG, "mxf_read_timecode_component tell %x\n", avio_tell(s->pb));
         mxf_set_starting_timecode_inplace(s, timecode);
         timecode->start = avio_rb64(s->pb);
         break;
