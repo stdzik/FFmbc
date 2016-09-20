@@ -722,6 +722,20 @@ static void mxf_set_starting_timecode_inplace(AVFormatContext *s, MXFTimecodeCom
 	fclose(fp);
 	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_timecode_inplace exit %s\n", s->timecode);
 }
+
+static int mxf_set_dropframe_inplace(AVFormatContext *s)
+{
+	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_dropframe_inplace enter %s\n", s->timecode);
+	uint8_t dropFlag = (s->timecode[8] == ';');
+	int64_t offset = avio_tell(s->pb);
+	FILE *fp = fopen(s->filename, "r+b");
+	fseek(fp, offset, SEEK_SET);
+	fwrite(&dropFlag, 1, 1, fp);
+	fclose(fp);
+	av_log(s, AV_LOG_DEBUG, "mxf_set_starting_dropframe_inplace exit %s dropflag %d\n",
+			s->timecode, dropFlag);
+}
+
 /***
  * BEWARE: This has been modified to set the timecode while it is being read. It is not a simple read
  * function anymore.
@@ -738,6 +752,7 @@ static int mxf_read_timecode_component(AVFormatContext *s, void *arg, int tag, i
         timecode->base = avio_rb16(s->pb);
         break;
     case 0x1503: // Drop Frame
+    	mxf_set_dropframe_inplace(s);
         timecode->drop_frame = avio_r8(s->pb);
         break;
     }
