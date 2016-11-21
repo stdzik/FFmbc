@@ -18,7 +18,15 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#define MDEBUG
+
+/**
+ * Current status:
+ * 	-linked_content option will link the media rather than embed it.
+ * 	It will only work with mov format right now. (Possibly adding mxf later).
+ * 	It will not work with other codecs etc.
+ * 	ffmbc -i input -linked_content output.mov
+ *
+ */
 
 #include "config.h"
 #include <ctype.h>
@@ -46,9 +54,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/libm.h"
 #include "libavformat/os_support.h"
-#ifdef MDEBUG
 #include "libavformat/movenc.h"
-#endif
 
 #if CONFIG_AVFILTER
 # include "libavfilter/avcodec.h"
@@ -129,9 +135,8 @@ static const OptionDef options[];
 #define MAX_FILES 100
 #define MAX_STREAMS 1024    /* arbitrary sanity check value */
 static const char *last_asked_format = NULL;
-#ifdef MDEBUG
 static char *cliTimecode = NULL;
-#endif
+static int linked_content = 0;
 static double *ts_scale;
 static int  nb_ts_scale;
 
@@ -1042,11 +1047,11 @@ static void do_audio_out(AVFormatContext *s,
         double idelta= delta*dec->sample_rate / enc->sample_rate;
         int byte_delta= ((int)idelta)*isize*dec->channels;
 
-#ifndef MDEBUG
-        if (verbose > 3)
-            av_log(NULL, AV_LOG_INFO, "adelta:%f ost->sync_opts:%"PRId64", ost->sync_ipts:%f, size:%d, stream:#%d.%d\n",
-                    delta / enc->sample_rate, ost->sync_opts, get_sync_ipts(ost), size, ist->file_index, ist->st->index);
-#endif
+        if(!linked_content) {
+			if (verbose > 3)
+				av_log(NULL, AV_LOG_INFO, "adelta:%f ost->sync_opts:%"PRId64", ost->sync_ipts:%f, size:%d, stream:#%d.%d\n",
+						delta / enc->sample_rate, ost->sync_opts, get_sync_ipts(ost), size, ist->file_index, ist->st->index);
+        }
 
         //FIXME resample delay
         if(fabs(delta) > 50){
@@ -1441,11 +1446,11 @@ static void do_video_out(AVFormatContext *s, OutputStream *ost, InputStream *ist
                 ost->sync_opts= lrintf(sync_ipts);
         }else if (vdelta > 0.6)
             nb_frames += lrintf(vdelta);
-#ifndef MDEBUG
-        if (verbose>3)
-            av_log(NULL, AV_LOG_INFO, "vdelta:%f, ost->sync_opts:%"PRId64", ost->sync_ipts:%f nb_frames:%d\n",
-                    vdelta, ost->sync_opts, get_sync_ipts(ost), nb_frames);
-#endif
+        if(!linked_content) {
+			if (verbose>3)
+				av_log(NULL, AV_LOG_INFO, "vdelta:%f, ost->sync_opts:%"PRId64", ost->sync_ipts:%f nb_frames:%d\n",
+						vdelta, ost->sync_opts, get_sync_ipts(ost), nb_frames);
+        }
     } else if (!vsync_method) {
         if (ist->dts_is_reordered_pts && ist->st->codec->has_b_frames > 0)
             sync_ipts -= ist->st->codec->has_b_frames;
@@ -3304,11 +3309,11 @@ static int transcode(AVFormatContext **output_files,
             ost = ost_table[i];
             for(j=0;j<ost->nb_source_indexes;j++) {
             	// save the input file name for the link
-#ifdef MDEBUG
-            	char* inputFilename =  input_files[input_streams[ost->source_index[j]].file_index].ctx->filename;
-            	strcpy(ost->st->inputFilename, inputFilename);
-            	av_log(NULL, AV_LOG_DEBUG, "File %s -> Stream #%d.%d\n",ost->st->inputFilename, ost->file_index, ost->index);
-#endif
+            	if(linked_content) {
+					char* inputFilename =  input_files[input_streams[ost->source_index[j]].file_index].ctx->filename;
+					strcpy(ost->st->inputFilename, inputFilename);
+					av_log(NULL, AV_LOG_DEBUG, "File %s -> Stream #%d.%d\n",ost->st->inputFilename, ost->file_index, ost->index);
+            	}
 				av_log(NULL, AV_LOG_INFO, "  Stream #%d.%d -> #%d.%d",
 						input_streams[ost->source_index[j]].file_index,
 						input_streams[ost->source_index[j]].st->index,
@@ -3342,9 +3347,11 @@ static int transcode(AVFormatContext **output_files,
         update_interval = 2000000;
 
     term_init();
+    av_log(NULL, AV_LOG_INFO, "ffmbc inside it\n");
 
     timer_start = av_gettime();
-#ifdef NOTNOW
+// if content is not linked, then scan input streams
+if(!linked_content) {
     for(; received_sigterm == 0;) {
         int file_index, ist_index;
         AVPacket pkt;
@@ -3414,6 +3421,7 @@ static int transcode(AVFormatContext **output_files,
             double ipts, opts;
             ost = ost_table[i];
             os = output_files[ost->file_index];
+            os->linked_content = linked_content;
             for(j=0;j<ost->nb_source_indexes;j++) {
             ist = &input_streams[ost->source_index[j]];
             if(ist->is_past_recording_time || no_packet[ist->file_index])
@@ -3549,11 +3557,7 @@ static int transcode(AVFormatContext **output_files,
         /* dump report by using the output first video and audio streams */
         print_report(output_files, ost_table, nb_ostreams, 0, duration);
     }
-#endif
-
-    MOVMuxContext *mov = os->priv_data;
-    av_log(os,AV_LOG_DEBUG, "mov trackCount %d\n", mov->nb_streams);
-
+} // linked content
     /* at the end of stream, we must flush the decoder buffers */
     for (i = 0; i < nb_input_streams; i++) {
         ist = &input_streams[i];
@@ -3564,6 +3568,7 @@ static int transcode(AVFormatContext **output_files,
     /* write the trailer if needed and close file */
     for(i=0;i<nb_output_files;i++) {
         os = output_files[i];
+        os->linked_content = linked_content;
         if((ret = av_write_trailer(os)) < 0) {
         	goto fail;
         }
@@ -4186,9 +4191,8 @@ static int opt_input_file(const char *opt, const char *filename)
         find_codec_or_die(subtitle_codec_name, AVMEDIA_TYPE_SUBTITLE, 0);
     ic->flags |= AVFMT_FLAG_NONBLOCK;
 
-#ifdef MDEBUG
-    ic->timecode = cliTimecode;
-#endif
+    if(linked_content)
+    	ic->timecode = cliTimecode;
 
     /* open the input file with generic libav function */
     err = avformat_open_input(&ic, filename, file_iformat, &format_opts);
@@ -4750,7 +4754,7 @@ static int opt_bsf(const char *opt, const char *arg)
 
 static int opt_output_file(const char *opt, const char *filename)
 {
-    AVFormatContext *oc;
+   AVFormatContext *oc;
     int err, use_video, use_audio, use_subtitle, use_data;
     int input_has_video, input_has_audio, input_has_subtitle, input_has_data;
     AVOutputFormat *file_oformat;
@@ -4816,22 +4820,24 @@ static int opt_output_file(const char *opt, const char *filename)
          *
          * If there are no maps, we just use the use_audio flag to see if we should create one stream.
          */
-#ifdef MDEBUG
-        if (use_audio)
-        {
-        	if(nb_audio_channel_maps > 0) {
-            	av_log(NULL, AV_LOG_DEBUG, "Use audio: maps %d\n", nb_audio_channel_maps);
-            	for(int i = 0; i < nb_audio_channel_maps; i++) {
-            		new_audio_stream(oc, nb_output_files);
-            		av_log(NULL, AV_LOG_DEBUG, "NUMBER OF STREAMS %d\n", oc->nb_streams);
-            	}
-        	} else {
-                new_audio_stream(oc, nb_output_files);
-        	}
-       	}
-#else
-        if (use_audio)new_audio_stream(oc, nb_output_files);
-#endif
+        if(linked_content) {
+			if (use_audio)
+			{
+				if(nb_audio_channel_maps > 0) {
+					av_log(NULL, AV_LOG_DEBUG, "Use audio: maps %d\n", nb_audio_channel_maps);
+					for(int i = 0; i < nb_audio_channel_maps; i++) {
+						new_audio_stream(oc, nb_output_files);
+						av_log(NULL, AV_LOG_DEBUG, "NUMBER OF STREAMS %d\n", oc->nb_streams);
+					}
+				} else {
+					new_audio_stream(oc, nb_output_files);
+				}
+			}
+		}
+        else {
+        	if (use_audio)new_audio_stream(oc, nb_output_files);
+        }
+
         if (use_subtitle) new_subtitle_stream(oc, nb_output_files);
         if (use_data)     new_data_stream(oc, nb_output_files);
 
@@ -5304,13 +5310,11 @@ static int opt_target(const char *opt, const char *arg)
     return 0;
 }
 
-#ifdef MDEBUG
-static int opt_timecode(const char *opt, const char *arg)
+static int opt_timecode(const char *opt, char *arg)
 {
 	cliTimecode = arg;
 	return 0;
 }
-#endif
 
 static int opt_vstats_file(const char *opt, const char *arg)
 {
@@ -5388,9 +5392,8 @@ static int opt_deinterlace(const char *opt, const char *arg)
 static const OptionDef options[] = {
     /* main options */
 #include "cmdutils_common_opts.h"
-#ifdef MDEBUG
 	{"timecode", HAS_ARG, {(void*)opt_timecode}, "set initial timecode for quicktime", "qtimecode" },
-#endif
+	{"linked_content", OPT_BOOL, {(void*)&linked_content}, "output file only contains links to content"},
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "fmt" },
     { "i", HAS_ARG, {(void*)opt_input_file}, "input file name", "filename" },
     { "y", OPT_BOOL, {(void*)&file_overwrite}, "overwrite output files" },
@@ -5564,7 +5567,6 @@ int main(int argc, char **argv)
 
     /* parse options */
     parse_options(argc, argv, options, opt_output_file);
-
     if(nb_output_files <= 0 && nb_input_files == 0) {
         show_usage();
         av_log(NULL, AV_LOG_ERROR, "Use -h to get full help or, even better, run 'man ffmbc'\n");
@@ -5589,7 +5591,6 @@ int main(int argc, char **argv)
 
     ti = getutime();
 
-#ifdef MDEBUG
     for(int i = 0; i < nb_output_files; i++) {
     	if(!strcmp(output_files[i]->oformat->extensions, "mov") && cliTimecode) {
         	MOVMuxContext* mov = output_files[i]->priv_data;
@@ -5597,7 +5598,6 @@ int main(int argc, char **argv)
     	}
     }
     av_log(NULL, AV_LOG_INFO, "main: timecode: %s output streams %d\n", cliTimecode, output_files[0]->nb_streams);
-#endif
 
     if (transcode(output_files, nb_output_files, input_files, nb_input_files,
                   stream_maps, nb_stream_maps) < 0) {

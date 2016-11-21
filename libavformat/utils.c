@@ -3285,7 +3285,7 @@ int av_write_trailer(AVFormatContext *s)
             break;
 
         ret= s->oformat->write_packet(s, &pkt);
-        if (ret >= 0)
+       if (ret >= 0)
             s->streams[pkt.stream_index]->nb_frames++;
 
         av_free_packet(&pkt);

@@ -228,6 +228,7 @@ static inline void prepare_app_arguments(int *argc_ptr, char ***argv_ptr)
 void parse_options(int argc, char **argv, const OptionDef *options,
                    int (* parse_arg_function)(const char *opt, const char *arg))
 {
+	fprintf(stderr, "parse_options: help %s argname %s\n", options->help, options->argname);
     const char *opt, *arg;
     int optindex, handleoptions=1;
     const OptionDef *po;
@@ -239,6 +240,7 @@ void parse_options(int argc, char **argv, const OptionDef *options,
     optindex = 1;
     while (optindex < argc) {
         opt = argv[optindex++];
+        av_log(NULL, AV_LOG_INFO, "parse options opt: %s\n", opt);
         if (handleoptions && opt[0] == '-' && opt[1] != '\0') {
             int bool_val = 1;
             if (opt[1] == '-' && opt[2] == '\0') {
@@ -247,6 +249,7 @@ void parse_options(int argc, char **argv, const OptionDef *options,
             }
             opt++;
             po= find_option(options, opt);
+            fprintf(stderr, "options found %s\n", po->name);
             if (!po->name && opt[0] == 'n' && opt[1] == 'o') {
                 /* handle 'no' bool option */
                 po = find_option(options, opt + 2);
@@ -254,8 +257,9 @@ void parse_options(int argc, char **argv, const OptionDef *options,
                     goto unknown_opt;
                 bool_val = 0;
             }
-            if (!po->name)
+            if (!po->name) {
                 po= find_option(options, "default");
+            }
             if (!po->name) {
 unknown_opt:
                 fprintf(stderr, "%s: unrecognized option '%s'\n", argv[0], opt);
@@ -264,6 +268,7 @@ unknown_opt:
             arg = NULL;
             if (po->flags & HAS_ARG) {
                 arg = argv[optindex++];
+                fprintf(stderr, "parse_options: opt %s arg %s help %s name %s\n", opt, arg, po->help, po->name);
                 if (!arg) {
                     fprintf(stderr, "%s: missing argument for option '%s'\n", argv[0], opt);
                     exit(1);
@@ -282,6 +287,7 @@ unknown_opt:
             } else if (po->flags & OPT_FLOAT) {
                 *po->u.float_arg = parse_number_or_die(opt, arg, OPT_FLOAT, -INFINITY, INFINITY);
             } else if (po->u.func_arg) {
+                fprintf(stderr, "options opt found %s\n", po->name);
                 if (po->u.func_arg(opt, arg) < 0) {
                     fprintf(stderr, "%s: failed to set value '%s' for option '%s'\n", argv[0], arg ? arg : "[null]", opt);
                     exit(1);
@@ -290,12 +296,14 @@ unknown_opt:
             if(po->flags & OPT_EXIT)
                 exit(0);
         } else {
-            if (parse_arg_function) {
+            fprintf(stderr, "options 5 found %s\n", po->name);
+           if (parse_arg_function) {
                 if (parse_arg_function(NULL, opt) < 0)
                     exit(1);
             }
         }
     }
+    av_log(NULL, AV_LOG_INFO, "parse_options exit\n");
 }
 
 #define FLAGS(o) ((o)->type == FF_OPT_TYPE_FLAGS) ? AV_DICT_APPEND : 0

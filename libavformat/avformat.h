@@ -886,6 +886,7 @@ typedef struct AVFormatContext {
      */
     int64_t bit_rate;
     char *timecode;
+    int linked_content;
 } AVFormatContext;
 
 typedef struct AVPacketList {
